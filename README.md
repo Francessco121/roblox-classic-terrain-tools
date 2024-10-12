@@ -6,7 +6,7 @@ Scripts for porting classic terrain (the voxel terrain before smooth terrain) in
 
 ## How to
 1. Obtain an old version of Roblox Studio (preferably a 2014 build).
-2. Open the the place file containing classic terrain in old studio.
+2. Open the place file containing classic terrain in old studio.
 3. Run the `ExportTerrain.lua` script by following the instructions inside of it.
 4. Open another place file in modern Roblox Studio that you want to import the terrain into.
 5. Run the `ImportTerrain.lua` script by following the instructions inside of it.
