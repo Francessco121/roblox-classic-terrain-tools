@@ -1023,7 +1023,7 @@ local function SetUpTextures(part: BasePart, surround: Surround, cellType: numbe
 
           tex.Parent = part
         end
-      elseif cellType ~= 2 or normal ~= Enum.NormalId.Left then -- Corner wedges don't need a left texture
+      elseif cellType ~= 2 or normal ~= Enum.NormalId.Right then -- Corner wedges don't need a left texture
         -- Use side textures
         if cellType == 4 then
           if face ~= Enum.NormalId.Front then
