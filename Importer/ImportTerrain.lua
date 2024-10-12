@@ -705,7 +705,6 @@ end
 -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- 
 -- MARK: Texture Functions
 local normals = {Enum.NormalId.Back, Enum.NormalId.Bottom, Enum.NormalId.Front, Enum.NormalId.Left, Enum.NormalId.Right, Enum.NormalId.Top}
--- TODO: fix texture asset ids
 local textures = {
   [0] = { -- Grass
     Top = "rbxassetid://11150954718",
@@ -837,7 +836,7 @@ local textures = {
     SideTop90 = "rbxassetid://11229755873",
     SideTop270 = "rbxassetid://11229755781",
     Slope = "rbxassetid://11229755454",
-    SlopeTop = "rbxassetid://11229755949" -- content deleted omegalul "rbxassetid://11229755229"
+    SlopeTop = "rbxassetid://132894594750417"
   },
   [11] = { -- CinderBlock
     Top = "rbxassetid://11229900650",
@@ -845,7 +844,7 @@ local textures = {
     Side = "rbxassetid://11229902261",
     Side90 = "rbxassetid://11229902046",
     Side270 = "rbxassetid://11229901913",
-    SideTop = "rbxassetid://11229900912", -- content deleted omegalul "rbxassetid://11229901723",
+    SideTop = "rbxassetid://11229900912", -- original got content deleted but slope top is identical, so we'll use that
     SideTop90 = "rbxassetid://11229901503",
     SideTop270 = "rbxassetid://11229901192",
     Slope = "rbxassetid://11229901090",
@@ -877,15 +876,27 @@ local textures = {
   },
   [14] = { -- RedPlastic
     Top = "rbxassetid://11230008311",
-    Bottom = "",
-    Side = "",
-    Side90 = "",
-    Side270 = "",
+    Bottom = "rbxassetid://121476124804140",
+    Side = "rbxassetid://127524203431138",
+    Side90 = "rbxassetid://75579022650720",
+    Side270 = "rbxassetid://101138022887512",
     SideTop = "rbxassetid://11230008452",
-    SideTop90 = "",
-    SideTop270 = "",
-    Slope = "",
-    SlopeTop = ""
+    SideTop90 = "rbxassetid://98401058976118",
+    SideTop270 = "rbxassetid://134319060267111",
+    Slope = "rbxassetid://80650776012984",
+    SlopeTop = "rbxassetid://135185272031647"
+  },
+  [15] = { -- BluePlastic
+    Top = "rbxassetid://121191178544933",
+    Bottom = "rbxassetid://137711320455303",
+    Side = "rbxassetid://111863168243989",
+    Side90 = "rbxassetid://73223131790627",
+    Side270 = "rbxassetid://108057622031851",
+    SideTop = "rbxassetid://119917720586806",
+    SideTop90 = "rbxassetid://79343196909232",
+    SideTop270 = "rbxassetid://81634603714667",
+    Slope = "rbxassetid://105306404781891",
+    SlopeTop = "rbxassetid://105513373464367"
   }
 }
 
