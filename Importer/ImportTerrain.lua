@@ -930,17 +930,63 @@ local horizontalWedgeNormalFaceMap = {
 }
 
 local function SetUpTextures(part: BasePart, surround: Surround, cellType: number, cellMat: number)
+  local texs = textures[cellMat]
+    
+  if texs == nil then
+    error("unknown material id " .. cellMat)
+  end
+
+  local function ApplyInverseCornerWedgeSlopeTexture()
+    local slope = part:FindFirstChild("Slope") :: BasePart
+    local normal = Enum.NormalId.Right
+    local face = normal
+
+    local xUV = (part.Position.Z - (part.Size.Z / 2)) / 4
+    local yUV = (part.Position.Y + (part.Size.Y / 2)) / 4
+
+    -- Slope of inverse corner wedge
+    if surround.IsTop then
+      -- Solid side (vertical, top)
+      local tex = Instance.new("Texture")
+      tex.Name = "Tex" .. normal.Name
+      tex.Texture = texs.SlopeTop
+      tex.Face = FixSolidVertNormal(face)
+      tex.StudsPerTileU = 8 -- 2x1 tiles per tex, 4 studs per tile
+      tex.StudsPerTileV = 48 / 8
+      tex.OffsetStudsU = 4 * (xUV % 2)
+      tex.OffsetStudsV = 1 -- move passed the 8 pixel border for bilinear filtering on wrapped edges
+
+      if cellType == 2 or cellType == 3 then
+        tex.OffsetStudsU = tex.OffsetStudsU + 2
+        tex.OffsetStudsV = tex.OffsetStudsV + 2
+      end
+
+      tex.Parent = slope
+    else
+      -- Solid side (vertical)
+      local tex = Instance.new("Texture")
+      tex.Name = "Tex" .. normal.Name
+      tex.Texture = texs.Slope
+      tex.Face = FixSolidVertNormal(face)
+      tex.StudsPerTileU = 8 -- 2x4 tiles per tex, 4 studs per tile
+      tex.StudsPerTileV = 16
+      tex.OffsetStudsU = 4 * (xUV % 2)
+      tex.OffsetStudsV = 4 * (yUV % 4)
+
+      if cellType == 2 or cellType == 3 then
+        tex.OffsetStudsU = tex.OffsetStudsU + 2
+        tex.OffsetStudsV = tex.OffsetStudsV + 2
+      end
+
+      tex.Parent = slope
+    end
+  end
+  
   local function ApplyTexture(normal)
     local face = normal
 
     if cellType == 4 then
       face = horizontalWedgeNormalFaceMap[normal]
-    end
-    
-    local texs = textures[cellMat]
-    
-    if texs == nil then
-      error("unknown material id " .. cellMat)
     end
 
     if normal == Enum.NormalId.Top and surround.IsTop then
@@ -985,8 +1031,10 @@ local function SetUpTextures(part: BasePart, surround: Surround, cellType: numbe
         yUV = (part.Position.Y + (part.Size.Y / 2)) / 4
       end
 
-      if normal == Enum.NormalId.Front and (cellType == 1 or cellType == 2 or cellType == 3) then
-        -- Front of VerticalWedge, CornerWedge, InverseCornerWedge
+      if (normal == Enum.NormalId.Front and cellType == 1) or
+         (normal == Enum.NormalId.Right and cellType == 2)
+      then
+        -- Front of VerticalWedge, CornerWedge
         -- Use slope textures
         if surround.IsTop then
           -- Solid side (vertical, top)
@@ -1023,7 +1071,7 @@ local function SetUpTextures(part: BasePart, surround: Surround, cellType: numbe
 
           tex.Parent = part
         end
-      elseif cellType ~= 2 or normal ~= Enum.NormalId.Right then -- Corner wedges don't need a left texture
+      elseif cellType ~= 2 or normal ~= Enum.NormalId.Back then -- Corner wedges don't need a back texture
         -- Use side textures
         if cellType == 4 then
           if face ~= Enum.NormalId.Front then
@@ -1119,6 +1167,10 @@ local function SetUpTextures(part: BasePart, surround: Surround, cellType: numbe
   for _, normal in ipairs(normals) do
     ApplyTexture(normal)
   end
+
+  if cellType == 3 then
+    ApplyInverseCornerWedgeSlopeTexture()
+  end
 end
 
 -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- 
@@ -1169,10 +1221,8 @@ local function MakePart(voxel: any): BasePart | nil
     end
   elseif cellType == 2 then
     p = cornerWedgeTemplate:Clone()
-    baseRotationY = 90
   elseif cellType == 3 then
     p = inverseCornerWedgeTemplate:Clone()
-    baseRotationY = 180
   end
 
   p.Name = "Cell" .. tostring(cellOrientation)
@@ -1203,6 +1253,12 @@ local function MakePart(voxel: any): BasePart | nil
   end
 
   p.Orientation = Vector3.new(0, baseRotationY + (cellOrientation * 90), baseRotationZ)
+
+  if cellType == 3 then
+    local slope = p:FindFirstChild("Slope") :: BasePart
+    slope.CFrame = p.CFrame
+    slope.Size = p.Size
+  end
 
   SetUpTextures(p, surround, cellType, cellMat)
 
