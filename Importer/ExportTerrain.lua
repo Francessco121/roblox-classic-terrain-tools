@@ -189,8 +189,8 @@ for i, bound in ipairs(bounds) do
               solidBottom = IsVoxelAt(x, y - 1, z, Enum.CellBlock.Solid)
               solidLeft = IsVoxelAt(x - 1, y, z, Enum.CellBlock.Solid)
               solidRight = IsVoxelAt(x + 1, y, z, Enum.CellBlock.Solid)
-              solidBack = IsVoxelAt(x, y, z - 1, Enum.CellBlock.Solid)
-              solidFront = IsVoxelAt(x, y, z + 1, Enum.CellBlock.Solid)
+              solidBack = IsVoxelAt(x, y, z + 1, Enum.CellBlock.Solid)
+              solidFront = IsVoxelAt(x, y, z - 1, Enum.CellBlock.Solid)
             end
           elseif cellType == Enum.CellBlock.VerticalWedge then
             -- VerticalWedge
