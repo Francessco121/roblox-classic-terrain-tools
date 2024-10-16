@@ -34,20 +34,20 @@
 -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- 
 -- MARK: Helper Functions
 
-local CellOrientation = {
-  NegZ = 0,
-  X = 1,
-  Z = 2,
-  NegX = 3
-}
+local CELL_ORIENTATION_0 = 0 -- -Z
+local CELL_ORIENTATION_90 = 1 -- +X
+local CELL_ORIENTATION_180 = 2 -- +Z
+local CELL_ORIENTATION_270 = 3 -- -X
 
-local CellBlock = {
-  Solid = 0,
-  VerticalWedge = 1,
-  CornerWedge = 2,
-  InverseCornerWedge = 3,
-  HorizontalWedge = 4
-}
+local CELL_TYPE_SOLID = 0
+local CELL_TYPE_VERTICAL_WEDGE = 1
+local CELL_TYPE_CORNER_WEDGE = 2
+local CELL_TYPE_INVERSE_CORNER_WEDGE = 3
+local CELL_TYPE_HORIZONTAL_WEDGE = 4
+
+local CELL_FACE_TYPE_EMPTY = 0
+local CELL_FACE_TYPE_SQUARE = 1
+local CELL_FACE_TYPE_TRIANGLE = 2
 
 type Surround = {
   IsTop: boolean,
@@ -81,16 +81,7 @@ type Voxel = {
 
 type VoxelMap = {{{Voxel}}} -- 3d array
 
-local CellFaceType = {
-  Empty = 0,
-  Square = 1,
-  TriBottomRight = 2,
-  TriBottomLeft = 3,
-  TriTopLeft = 4,
-  TriTopRight = 5
-}
-
-local function StoreVoxel(voxels: VoxelMap, x: number, y: number, z: number, voxel: Voxel)
+local function StoreVoxel(voxels: VoxelMap, x: number, y: number, z: number, voxel: Voxel): ()
   local xt = voxels[x]
   if xt == nil then
     xt = {}
@@ -120,7 +111,7 @@ local function GetVoxel(voxels: VoxelMap, x: number, y: number, z: number): Voxe
   return yt[z]
 end
 
-local function ParseSurround(surround) 
+local function ParseSurround(surround): Surround 
   if typeof(surround) == "string" then
     return {
       IsTop = string.sub(surround, 1, 1) == "1",
@@ -164,7 +155,7 @@ local function ParseVoxel(cell: any): Voxel
   return voxel
 end
 
-local function IsSameVoxel(a: Voxel, b: Voxel)
+local function IsSameVoxel(a: Voxel, b: Voxel): boolean
   return a.Mat == b.Mat
     and a.Type == b.Type
     and a.Orientation == b.Orientation
@@ -176,25 +167,26 @@ local function IsSameVoxel(a: Voxel, b: Voxel)
     and (a.Surround.Front == b.Surround.Front 	--[[or (not a.Surround.Front and b.Surround.Front)]])
 end
 
-local function PatchVoxel(voxel: Voxel, voxels: VoxelMap)
+-- TODO: fix and remove
+local function PatchVoxel(voxel: Voxel, voxels: VoxelMap): ()
   -- Some voxels got exported incorrectly, just fix them here
-  if voxel.Type == 3 then
+  if voxel.Type == CELL_TYPE_INVERSE_CORNER_WEDGE then
     -- Inverse corner wedge IsTop is incorrect
     local above = GetVoxel(voxels, voxel.X, voxel.Y + 1, voxel.Z)
 
     if above then
-      voxel.Surround.IsTop = not (above.Type == 2 and above.Orientation == voxel.Orientation)
+      voxel.Surround.IsTop = not (above.Type == CELL_TYPE_CORNER_WEDGE and above.Orientation == voxel.Orientation)
     else
       voxel.Surround.IsTop = true
     end
-  elseif voxel.Type == 0 then
+  elseif voxel.Type == CELL_TYPE_SOLID then
     -- Solid IsTop is wrong in some cases
     local above = GetVoxel(voxels, voxel.X, voxel.Y + 1, voxel.Z)
 
     if above then
-      voxel.Surround.IsTop = (above.Type == 2 or above.Type == 4)
+      voxel.Surround.IsTop = (above.Type == CELL_TYPE_CORNER_WEDGE or above.Type == CELL_TYPE_HORIZONTAL_WEDGE)
     end
-  elseif voxel.Type == 4 then
+  elseif voxel.Type == CELL_TYPE_HORIZONTAL_WEDGE then
     -- HorizontalWedge IsTop is wrong in some cases
     local above = GetVoxel(voxels, voxel.X, voxel.Y + 1, voxel.Z)
 
@@ -207,47 +199,47 @@ end
 --[[
   Rotates a face normal in the direction of the its cell orientation.
 --]]
-local function RotateFaceNormal(normal: Enum.NormalId, orientation: number)
+local function RotateFaceNormal(normal: Enum.NormalId, orientation: number): Enum.NormalId
   if normal == Enum.NormalId.Top or normal == Enum.NormalId.Bottom then
     -- Cells only rotate along the Y axis
     return normal
   end
 
-  if orientation == 0 then
+  if orientation == CELL_ORIENTATION_0 then
     -- Cell is already at identity orientation
     return normal
   end
 
   if normal == Enum.NormalId.Back then
-    if orientation == 1 then
+    if orientation == CELL_ORIENTATION_90 then
       return Enum.NormalId.Left
-    elseif orientation == 2 then
+    elseif orientation == CELL_ORIENTATION_180 then
       return Enum.NormalId.Front
-    elseif orientation == 3 then
+    elseif orientation == CELL_ORIENTATION_270 then
       return Enum.NormalId.Right
     end
   elseif normal == Enum.NormalId.Front then
-    if orientation == 1 then
+    if orientation == CELL_ORIENTATION_90 then
       return Enum.NormalId.Right
-    elseif orientation == 2 then
+    elseif orientation == CELL_ORIENTATION_180 then
       return Enum.NormalId.Back
-    elseif orientation == 3 then
+    elseif orientation == CELL_ORIENTATION_270 then
       return Enum.NormalId.Left
     end
   elseif normal == Enum.NormalId.Left then
-    if orientation == 1 then
+    if orientation == CELL_ORIENTATION_90 then
       return Enum.NormalId.Front
-    elseif orientation == 2 then
+    elseif orientation == CELL_ORIENTATION_180 then
       return Enum.NormalId.Right
-    elseif orientation == 3 then
+    elseif orientation == CELL_ORIENTATION_270 then
       return Enum.NormalId.Back
     end
   elseif normal == Enum.NormalId.Right then
-    if orientation == 1 then
+    if orientation == CELL_ORIENTATION_90 then
       return Enum.NormalId.Back
-    elseif orientation == 2 then
+    elseif orientation == CELL_ORIENTATION_180 then
       return Enum.NormalId.Left
-    elseif orientation == 3 then
+    elseif orientation == CELL_ORIENTATION_270 then
       return Enum.NormalId.Front
     end
   end
@@ -259,47 +251,47 @@ end
   Rotates a face normal in the inverse direction of the its cell orientation,
   effectively undoing the rotation.
 --]]
-local function RotateFaceNormalInverse(normal: Enum.NormalId, orientation: number)
+local function RotateFaceNormalInverse(normal: Enum.NormalId, orientation: number): Enum.NormalId
   if normal == Enum.NormalId.Top or normal == Enum.NormalId.Bottom then
     -- Cells only rotate along the Y axis
     return normal
   end
 
-  if orientation == 0 then
+  if orientation == CELL_ORIENTATION_0 then
     -- Cell is already at identity orientation
     return normal
   end
 
   if normal == Enum.NormalId.Back then
-    if orientation == 1 then
+    if orientation == CELL_ORIENTATION_90 then
       return Enum.NormalId.Right
-    elseif orientation == 2 then
+    elseif orientation == CELL_ORIENTATION_180 then
       return Enum.NormalId.Front
-    elseif orientation == 3 then
+    elseif orientation == CELL_ORIENTATION_270 then
       return Enum.NormalId.Left
     end
   elseif normal == Enum.NormalId.Front then
-    if orientation == 1 then
+    if orientation == CELL_ORIENTATION_90 then
       return Enum.NormalId.Left
-    elseif orientation == 2 then
+    elseif orientation == CELL_ORIENTATION_180 then
       return Enum.NormalId.Back
-    elseif orientation == 3 then
+    elseif orientation == CELL_ORIENTATION_270 then
       return Enum.NormalId.Right
     end
   elseif normal == Enum.NormalId.Left then
-    if orientation == 1 then
+    if orientation == CELL_ORIENTATION_90 then
       return Enum.NormalId.Back
-    elseif orientation == 2 then
+    elseif orientation == CELL_ORIENTATION_180 then
       return Enum.NormalId.Right
-    elseif orientation == 3 then
+    elseif orientation == CELL_ORIENTATION_270 then
       return Enum.NormalId.Front
     end
   elseif normal == Enum.NormalId.Right then
-    if orientation == 1 then
+    if orientation == CELL_ORIENTATION_90 then
       return Enum.NormalId.Front
-    elseif orientation == 2 then
+    elseif orientation == CELL_ORIENTATION_180 then
       return Enum.NormalId.Left
-    elseif orientation == 3 then
+    elseif orientation == CELL_ORIENTATION_270 then
       return Enum.NormalId.Back
     end
   end
@@ -310,67 +302,66 @@ end
 --[[
   Cell face with respect to either: -Z, -X, -Y
 --]]
-local function GetCellFace(voxel: Voxel, normal: Enum.NormalId)
+local function GetCellFace(voxel: Voxel, normal: Enum.NormalId): number
   local cellType = voxel.Type
-  local cellOrientation = voxel.Orientation
 
   -- Account for cell orientation (below code assumes identity rotation)
-  normal = RotateFaceNormal(normal, cellOrientation)
+  normal = RotateFaceNormal(normal, voxel.Orientation)
 
   -- Determine face type
-  local face = CellFaceType.Empty
+  local face = CELL_FACE_TYPE_EMPTY
 
-  if cellType == 0 then
+  if cellType == CELL_TYPE_SOLID then
     -- Solid
-    face = CellFaceType.Square
-  elseif cellType == 1 then
+    face = CELL_FACE_TYPE_SQUARE
+  elseif cellType == CELL_TYPE_VERTICAL_WEDGE then
     -- VerticalWedge
     if normal == Enum.NormalId.Left or normal == Enum.NormalId.Right then
-      face = CellFaceType.TriBottomRight
+      face = CELL_FACE_TYPE_TRIANGLE
     elseif normal == Enum.NormalId.Back or normal == Enum.NormalId.Top then
-      face = CellFaceType.Empty
+      face = CELL_FACE_TYPE_EMPTY
     elseif normal == Enum.NormalId.Front or normal == Enum.NormalId.Bottom then
-      face = CellFaceType.Square
+      face = CELL_FACE_TYPE_SQUARE
     end
-  elseif cellType == 2 then
+  elseif cellType == CELL_TYPE_CORNER_WEDGE then
     -- CornerWedge
     if normal == Enum.NormalId.Left or normal == Enum.NormalId.Back or normal == Enum.NormalId.Top then
-      face = CellFaceType.Empty
+      face = CELL_FACE_TYPE_EMPTY
     elseif normal == Enum.NormalId.Right or normal == Enum.NormalId.Front or normal == Enum.NormalId.Bottom then
-      face = CellFaceType.TriBottomRight
+      face = CELL_FACE_TYPE_TRIANGLE
     end
-  elseif cellType == 3 then
+  elseif cellType == CELL_TYPE_INVERSE_CORNER_WEDGE then
     -- InverseCornerWedge
     if normal == Enum.NormalId.Left or normal == Enum.NormalId.Back or normal == Enum.NormalId.Top then
-      face = CellFaceType.TriBottomRight
+      face = CELL_FACE_TYPE_TRIANGLE
     elseif normal == Enum.NormalId.Right or normal == Enum.NormalId.Front or normal == Enum.NormalId.Bottom then
-      face = CellFaceType.Square
+      face = CELL_FACE_TYPE_SQUARE
     end
-  elseif cellType == 4 then
+  elseif cellType == CELL_TYPE_HORIZONTAL_WEDGE then
     -- HorizontalWedge
     if normal == Enum.NormalId.Left or normal == Enum.NormalId.Back then
-      face = CellFaceType.Empty
+      face = CELL_FACE_TYPE_EMPTY
     elseif normal == Enum.NormalId.Right or normal == Enum.NormalId.Front then
-      face = CellFaceType.Square
+      face = CELL_FACE_TYPE_SQUARE
     elseif normal == Enum.NormalId.Top or normal == Enum.NormalId.Bottom then
-      face = CellFaceType.TriBottomRight
+      face = CELL_FACE_TYPE_TRIANGLE
     end
   end
 
   return face
 end
 
-local function ShouldCullTexture(ourFace: number, theirFace: number)
-  if ourFace == CellFaceType.Empty then return false end
+local function ShouldCullTexture(ourFace: number, theirFace: number): boolean
+  if ourFace == CELL_FACE_TYPE_EMPTY then return false end
   
-  if ourFace ~= CellFaceType.Square and theirFace == CellFaceType.Square then
+  if ourFace ~= CELL_FACE_TYPE_SQUARE and theirFace == CELL_FACE_TYPE_SQUARE then
     return true
   end
 
   return ourFace == theirFace
 end
 
-local function TextureCull(voxel: Voxel, voxels: VoxelMap)
+local function TextureCull(voxel: Voxel, voxels: VoxelMap): ()
   if not voxel.Surround.Left then
     local left = GetVoxel(voxels, voxel.X - 1, voxel.Y, voxel.Z)
 
@@ -414,7 +405,7 @@ local function TextureCull(voxel: Voxel, voxels: VoxelMap)
   end
 end
 
-local function SetExtentsIfNotZero(voxel: Voxel, extents: Extents)
+local function SetExtentsIfNotZero(voxel: Voxel, extents: Extents): ()
   if extents.PosX ~= 0 
     or extents.PosY ~= 0 
     or extents.PosZ ~= 0
@@ -426,7 +417,7 @@ local function SetExtentsIfNotZero(voxel: Voxel, extents: Extents)
   end
 end
 
-local function TryExtendSolidVoxel(voxel: Voxel, voxels: VoxelMap)
+local function TryExtendSolidVoxel(voxel: Voxel, voxels: VoxelMap): ()
   local MAX = 64
 
   -- Try:
@@ -695,8 +686,8 @@ local function TryExtendSolidVoxel(voxel: Voxel, voxels: VoxelMap)
   end
 end
 
-local function TryExtendVerticalWedgeVoxel(voxel: Voxel, voxels: VoxelMap)
-  if voxel.Orientation == 1 or voxel.Orientation == 3 then
+local function TryExtendVerticalWedgeVoxel(voxel: Voxel, voxels: VoxelMap): ()
+  if voxel.Orientation == CELL_ORIENTATION_90 or voxel.Orientation == CELL_ORIENTATION_270 then
     -- Orientated X, extend Z
     local pz = 0
     local nz = 0
@@ -722,7 +713,7 @@ local function TryExtendVerticalWedgeVoxel(voxel: Voxel, voxels: VoxelMap)
     end
     
     SetExtentsIfNotZero(voxel, {PosX = 0, PosY = 0, PosZ = pz, NegX = 0, NegY = 0, NegZ = nz})
-  elseif voxel.Orientation == 0 or voxel.Orientation == 2 then
+  elseif voxel.Orientation == CELL_ORIENTATION_0 or voxel.Orientation == CELL_ORIENTATION_180 then
     -- Orientated Z, extend X
     local px = 0
     local nx = 0
@@ -751,7 +742,7 @@ local function TryExtendVerticalWedgeVoxel(voxel: Voxel, voxels: VoxelMap)
   end
 end
 
-local function TryExtendHorizontalWedgeVoxel(voxel: Voxel, voxels: VoxelMap)
+local function TryExtendHorizontalWedgeVoxel(voxel: Voxel, voxels: VoxelMap): ()
   local py = 0
   local ny = 0
 
@@ -778,12 +769,12 @@ local function TryExtendHorizontalWedgeVoxel(voxel: Voxel, voxels: VoxelMap)
   SetExtentsIfNotZero(voxel, {PosX = 0, PosY = py, PosZ = 0, NegX = 0, NegY = ny, NegZ = 0})
 end
 
-local function TryExtendVoxel(voxel: Voxel, voxels: VoxelMap)
-  if voxel.Type == 0 then
+local function TryExtendVoxel(voxel: Voxel, voxels: VoxelMap): ()
+  if voxel.Type == CELL_TYPE_SOLID then
     TryExtendSolidVoxel(voxel, voxels)
-  elseif voxel.Type == 1 then
+  elseif voxel.Type == CELL_TYPE_VERTICAL_WEDGE then
     TryExtendVerticalWedgeVoxel(voxel, voxels)
-  elseif voxel.Type == 4 then
+  elseif voxel.Type == CELL_TYPE_HORIZONTAL_WEDGE then
     TryExtendHorizontalWedgeVoxel(voxel, voxels)
   end
 end
@@ -1189,7 +1180,7 @@ local textures: { [number]: MaterialTextures } = {
   }
 }
 
-local function GetSurroundFromNormal(surround: Surround, normal: Enum.NormalId)
+local function GetSurroundFromNormal(surround: Surround, normal: Enum.NormalId): boolean
   if normal == Enum.NormalId.Top then
     return not surround.IsTop
   elseif normal == Enum.NormalId.Bottom then
@@ -1205,10 +1196,10 @@ local function GetSurroundFromNormal(surround: Surround, normal: Enum.NormalId)
   end
 end
 
-local function SetUpTexture(part: BasePart, voxel: Voxel, texs: MaterialTextures, normal: Enum.NormalId, face: Enum.NormalId, slope: boolean)
+local function SetUpTexture(part: BasePart, voxel: Voxel, texs: MaterialTextures, normal: Enum.NormalId, face: Enum.NormalId, slope: boolean): ()
   -- Calculate UVs
   local xUV, yUV
-  if voxel.Type == 0 then
+  if voxel.Type == CELL_TYPE_SOLID then
     -- UVs depending on part world position, top left of face
     if normal == Enum.NormalId.Top then
       xUV = -(part.Position.X + (part.Size.X / 2))
@@ -1263,14 +1254,14 @@ local function SetUpTexture(part: BasePart, voxel: Voxel, texs: MaterialTextures
 
     local orientation = voxel.Orientation
 
-    if orientation == 1 then
+    if orientation == CELL_ORIENTATION_90 then
       local _xUV = xUV
       xUV = 16 - yUV
       yUV = _xUV
-    elseif orientation == 2 then
+    elseif orientation == CELL_ORIENTATION_180 then
       xUV = 16 - xUV
       yUV = 16 - yUV
-    elseif orientation == 3 then
+    elseif orientation == CELL_ORIENTATION_270 then
       local _xUV = xUV
       xUV = yUV
       yUV = 16 - _xUV
@@ -1287,14 +1278,14 @@ local function SetUpTexture(part: BasePart, voxel: Voxel, texs: MaterialTextures
 
     local orientation = (4 - voxel.Orientation) % 4
 
-    if orientation == 1 then
+    if orientation == CELL_ORIENTATION_90 then
       local _xUV = xUV
       xUV = 8 - yUV
       yUV = _xUV
-    elseif orientation == 2 then
+    elseif orientation == CELL_ORIENTATION_180 then
       xUV = 8 - xUV
       yUV = 8 - yUV
-    elseif orientation == 3 then
+    elseif orientation == CELL_ORIENTATION_270 then
       local _xUV = xUV
       xUV = yUV
       yUV = 8 - _xUV
@@ -1308,17 +1299,17 @@ local function SetUpTexture(part: BasePart, voxel: Voxel, texs: MaterialTextures
   else -- Left, Right, Back, Front
     if voxel.Surround.IsTop then
       if slope then
-        tex.Texture = texs.SlopeTop[if voxel.Type == 1 then 2 else 1]
+        tex.Texture = texs.SlopeTop[if voxel.Type == CELL_TYPE_VERTICAL_WEDGE then 2 else 1]
       else
         tex.Texture = texs.SideTop
       end
       tex.StudsPerTileU = 8 -- 2x1 tiles per tex, 4 studs per tile
       tex.StudsPerTileV = 48 / 8
       tex.OffsetStudsU = xUV % 8
-      tex.OffsetStudsV = if voxel.Type == 0 then 1 else 3 -- move passed the 8 pixel border for bilinear filtering on wrapped edges
+      tex.OffsetStudsV = if voxel.Type == CELL_TYPE_SOLID then 1 else 3 -- move passed the 8 pixel border for bilinear filtering on wrapped edges
     else
       if slope then
-        tex.Texture = texs.Slope[if voxel.Type == 1 then 2 else 1]
+        tex.Texture = texs.Slope[if voxel.Type == CELL_TYPE_VERTICAL_WEDGE then 2 else 1]
       else
         tex.Texture = texs.Side
       end
@@ -1329,7 +1320,7 @@ local function SetUpTexture(part: BasePart, voxel: Voxel, texs: MaterialTextures
     end
   end
 
-  if voxel.Type == 3 and slope then
+  if voxel.Type == CELL_TYPE_INVERSE_CORNER_WEDGE and slope then
     -- Slopes on InverseCornerWedges are actually a child part
     tex.Parent = part:FindFirstChild("Slope")
   else
@@ -1337,7 +1328,7 @@ local function SetUpTexture(part: BasePart, voxel: Voxel, texs: MaterialTextures
   end
 end
 
-local function SetUpTextures(part: BasePart, voxel: Voxel)
+local function SetUpTextures(part: BasePart, voxel: Voxel): ()
   local cellType = voxel.Type
   local cellOrientation = voxel.Orientation
   local surround = voxel.Surround
@@ -1350,19 +1341,19 @@ local function SetUpTextures(part: BasePart, voxel: Voxel)
 
   -- Normal faces
   for _, normal in ipairs(normals) do
-    if not GetSurroundFromNormal(surround, normal) and GetCellFace(voxel, normal) ~= CellFaceType.Empty then
+    if not GetSurroundFromNormal(surround, normal) and GetCellFace(voxel, normal) ~= CELL_FACE_TYPE_EMPTY then
       SetUpTexture(part, voxel, texs, normal, RotateFaceNormal(normal, cellOrientation), --[[slope]]false)
     end
   end
 
   -- Slope/diagonal faces
-  if cellType == 1 then
+  if cellType == CELL_TYPE_VERTICAL_WEDGE then
     SetUpTexture(part, voxel, texs, RotateFaceNormalInverse(Enum.NormalId.Back, cellOrientation), Enum.NormalId.Top, --[[slope]]true)
-  elseif cellType == 2 or cellType == 3 then
+  elseif cellType == CELL_TYPE_CORNER_WEDGE or cellType == CELL_TYPE_INVERSE_CORNER_WEDGE then
     local normal = RotateFaceNormalInverse(Enum.NormalId.Left, cellOrientation)
     local face = RotateFaceNormal(normal, cellOrientation)
     SetUpTexture(part, voxel, texs, normal, face, --[[slope]]true)
-  elseif cellType == 4 then
+  elseif cellType == CELL_TYPE_HORIZONTAL_WEDGE then
     local normal = RotateFaceNormalInverse(Enum.NormalId.Left, cellOrientation)
     local face = RotateFaceNormal(normal, cellOrientation)
     SetUpTexture(part, voxel, texs, normal, face, --[[slope]]false)
@@ -1381,7 +1372,7 @@ if assetsFolder == nil then
   error("ServerStorage must contain a folder named LegacyTerrainAssets.", 0)
 end
 
-local function AssertAsset(name: string)
+local function AssertAsset(name: string): Instance
   local asset = assetsFolder:FindFirstChild(name)
   if asset == nil then
     error("LegacyTerrainAssets is missing the child " .. name .. ".", 0)
@@ -1407,16 +1398,16 @@ local function MakePart(voxel: Voxel): BasePart | nil
 
   local p: BasePart
 
-  if cellType == 0 then
+  if cellType == CELL_TYPE_SOLID then
     p = Instance.new("Part")
-    cellOrientation = 0 -- We dont support rotated solids, but also don't need them
-  elseif cellType == 1 then
+    cellOrientation = CELL_ORIENTATION_0 -- We dont support rotated solids, but also don't need them
+  elseif cellType == CELL_TYPE_VERTICAL_WEDGE then
     p = assets.VerticalWedge:Clone() :: BasePart
-  elseif cellType == 2 then
+  elseif cellType == CELL_TYPE_CORNER_WEDGE then
     p = assets.CornerWedge:Clone() :: BasePart
-  elseif cellType == 3 then
+  elseif cellType == CELL_TYPE_INVERSE_CORNER_WEDGE then
     p = assets.InverseCornerWedge:Clone() :: BasePart
-  elseif cellType == 4 then
+  elseif cellType == CELL_TYPE_HORIZONTAL_WEDGE then
     p = assets.HorizontalWedge:Clone() :: BasePart
   end
 
@@ -1435,7 +1426,7 @@ local function MakePart(voxel: Voxel): BasePart | nil
     local zs = math.abs(extents.NegZ) + extents.PosZ + 1
 
     p.CFrame = CFrame.new(x + hx, y + hy, z + hz)
-    if cellOrientation == 1 or cellOrientation == 3 then
+    if cellOrientation == CELL_ORIENTATION_90 or cellOrientation == CELL_ORIENTATION_270 then
       p.Size = Vector3.new(4 * zs, 4 * ys, 4 * xs)
     else
       p.Size = Vector3.new(4 * xs, 4 * ys, 4 * zs)
@@ -1447,7 +1438,7 @@ local function MakePart(voxel: Voxel): BasePart | nil
 
   p.Orientation = Vector3.new(0, cellOrientation * 90, 0)
 
-  if cellType == 3 then
+  if cellType == CELL_TYPE_INVERSE_CORNER_WEDGE then
     local slope = p:FindFirstChild("Slope") :: BasePart
 
     slope.Anchored = true
