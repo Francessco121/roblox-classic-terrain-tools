@@ -39,6 +39,7 @@
 
 -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- 
 -- MARK: Preparation
+local startTime = os.time()
 local terrainFolder = game:GetService("Selection"):Get()[1]
 
 if terrainFolder == nil then
@@ -97,14 +98,22 @@ local function IsVoxelAt(x, y, z, type, orientation)
   return true	
 end
 
--- Whether the voxel at the coordinates should be culled
-local function IsCulled(x, y, z)
-  return IsVoxelAt(x - 1, y, z, Enum.CellBlock.Solid) 
-    and IsVoxelAt(x + 1, y, z, Enum.CellBlock.Solid)
-    and IsVoxelAt(x, y - 1, z, Enum.CellBlock.Solid) 
-    and IsVoxelAt(x, y + 1, z, Enum.CellBlock.Solid) 
-    and IsVoxelAt(x, y, z - 1, Enum.CellBlock.Solid) 
-    and IsVoxelAt(x, y, z + 1, Enum.CellBlock.Solid) 
+local function BitPackSurround(top, bottom, left, right, front, back)
+  local n = 0
+
+  if top then n = n + 1 end
+  n = n * 2
+  if bottom then n = n + 1 end
+  n = n * 2
+  if left then n = n + 1 end
+  n = n * 2
+  if right then n = n + 1 end
+  n = n * 2
+  if front then n = n + 1 end
+  n = n * 2
+  if back then n = n + 1 end
+
+  return n
 end
 
 -- Checks if a voxel was not already exported
@@ -142,8 +151,8 @@ end
 
 -- Set up maps to convert enums to numbers
 --
--- These enums doesn't exist the same way in newer versions of Roblox, so
--- we can only send them over as integers and not as the actual enum type
+-- The generated ModuleScripts will be way smaller if we send these as 1-2
+-- character integers instead of the full "Enum.EnumType.Value" syntax.
 local cellMats = MakeMap(Enum.CellMaterial:GetEnumItems())
 local cellBlocks = MakeMap(Enum.CellBlock:GetEnumItems())
 local cellOrientations = MakeMap(Enum.CellOrientation:GetEnumItems())
@@ -169,100 +178,47 @@ for i, bound in ipairs(bounds) do
     for y = bound.bottom, bound.top do
       for z = bound.back, bound.front do
         local cellMat, cellType, cellOrientation = terrain:GetCell(x, y, z)
-        local cull = false
         
         -- Skip empty and already exported voxels
-        if cellMat ~= Enum.CellMaterial.Empty and DeDupeVoxel(x, y, z) then
+        if cellMat ~= Enum.CellMaterial.Empty and cellMat ~= Enum.CellMaterial.Water and DeDupeVoxel(x, y, z) then
           -- Determine voxel side culling
-          local isNotTop = true
+          local cull = false
+          local solidTop = false
           local solidBottom = false
           local solidLeft = false
           local solidRight = false
           local solidBack = false
           local solidFront = false
           if cellType == Enum.CellBlock.Solid then
-            -- Solid
-            cull = IsCulled(x, y, z)
+            solidTop = IsVoxelAt(x, y + 1, z, Enum.CellBlock.Solid)
+            solidBottom = IsVoxelAt(x, y - 1, z, Enum.CellBlock.Solid)
+            solidLeft = IsVoxelAt(x - 1, y, z, Enum.CellBlock.Solid)
+            solidRight = IsVoxelAt(x + 1, y, z, Enum.CellBlock.Solid)
+            solidBack = IsVoxelAt(x, y, z + 1, Enum.CellBlock.Solid)
+            solidFront = IsVoxelAt(x, y, z - 1, Enum.CellBlock.Solid)
 
-            if not cull then
-              isNotTop = IsVoxelAt(x, y + 1, z, Enum.CellBlock.Solid)
-              solidBottom = IsVoxelAt(x, y - 1, z, Enum.CellBlock.Solid)
-              solidLeft = IsVoxelAt(x - 1, y, z, Enum.CellBlock.Solid)
-              solidRight = IsVoxelAt(x + 1, y, z, Enum.CellBlock.Solid)
-              solidBack = IsVoxelAt(x, y, z + 1, Enum.CellBlock.Solid)
-              solidFront = IsVoxelAt(x, y, z - 1, Enum.CellBlock.Solid)
-            end
-          elseif cellType == Enum.CellBlock.VerticalWedge then
-            -- VerticalWedge
-            if cellOrientation == Enum.CellOrientation.NegZ then
-              isNotTop = IsVoxelAt(x, y + 1, z - 1, Enum.CellBlock.VerticalWedge, cellOrientation)
-            elseif cellOrientation == Enum.CellOrientation.X then
-              isNotTop = IsVoxelAt(x + 1, y + 1, z, Enum.CellBlock.VerticalWedge, cellOrientation)
-            elseif cellOrientation == Enum.CellOrientation.Z then
-              isNotTop = IsVoxelAt(x, y + 1, z + 1, Enum.CellBlock.VerticalWedge, cellOrientation)
-            elseif cellOrientation == Enum.CellOrientation.NegX then
-              isNotTop = IsVoxelAt(x - 1, y + 1, z, Enum.CellBlock.VerticalWedge, cellOrientation)
-            end
-          elseif cellType == Enum.CellBlock.HorizontalWedge then
-            -- HorizontalWedge
-            isNotTop = IsVoxelAt(x, y + 1, z, Enum.CellBlock.HorizontalWedge, cellOrientation)
-          elseif cellType == Enum.CellBlock.CornerWedge then
-            -- CornerWedge
-            if cellOrientation == Enum.CellOrientation.NegZ then
-              isNotTop = IsVoxelAt(x + 1, y + 1, z - 1, Enum.CellBlock.InverseCornerWedge, cellOrientation)
-            elseif cellOrientation == Enum.CellOrientation.X then
-              isNotTop = IsVoxelAt(x + 1, y + 1, z - 1, Enum.CellBlock.InverseCornerWedge, cellOrientation)
-            elseif cellOrientation == Enum.CellOrientation.Z then
-              isNotTop = IsVoxelAt(x - 1, y + 1, z + 1, Enum.CellBlock.InverseCornerWedge, cellOrientation)
-            elseif cellOrientation == Enum.CellOrientation.NegX then
-              isNotTop = IsVoxelAt(x - 1, y + 1, z + 1, Enum.CellBlock.InverseCornerWedge, cellOrientation)
-            end
-          elseif cellType == Enum.CellBlock.InverseCornerWedge then
-            -- InverseCornerWedge
-            if cellOrientation == Enum.CellOrientation.NegZ then
-              isNotTop = IsVoxelAt(x + 1, y + 1, z - 1, Enum.CellBlock.CornerWedge, cellOrientation)
-            elseif cellOrientation == Enum.CellOrientation.X then
-              isNotTop = IsVoxelAt(x + 1, y + 1, z - 1, Enum.CellBlock.CornerWedge, cellOrientation)
-            elseif cellOrientation == Enum.CellOrientation.Z then
-              isNotTop = IsVoxelAt(x - 1, y + 1, z + 1, Enum.CellBlock.CornerWedge, cellOrientation)
-            elseif cellOrientation == Enum.CellOrientation.NegX then
-              isNotTop = IsVoxelAt(x - 1, y + 1, z + 1, Enum.CellBlock.CornerWedge, cellOrientation)
-            end
+            cull = solidTop and solidBottom and solidLeft and solidRight and solidBack and solidFront
           end
           
           -- Skip if the whole voxel was determined to be culled
           if not cull then
             -- Add voxel to script source
-            local isTop
-            if isNotTop then isTop = 0 else isTop = 1 end
-            
             local surroundBits
             if cellType == Enum.CellBlock.Solid then
-              if solidBottom then solidBottom = 1 else solidBottom = 0 end
-              if solidLeft then solidLeft = 1 else solidLeft = 0 end
-              if solidRight then solidRight = 1 else solidRight = 0 end
-              if solidBack then solidBack = 1 else solidBack = 0 end
-              if solidFront then solidFront = 1 else solidFront = 0 end
-            
-              surroundBits = "\"" 
-                .. tostring(isTop) 
-                .. tostring(solidBottom) 
-                .. tostring(solidLeft) 
-                .. tostring(solidRight) 
-                .. tostring(solidBack) 
-                .. tostring(solidFront) 
-                .. "\""
-            else
-              surroundBits = tostring(isTop)
+              surroundBits = BitPackSurround(solidTop, solidBottom, solidLeft, solidRight, solidFront, solidBack)
             end 							
             
             local str = "{" ..
               tostring(x) .. "," .. tostring(y) .. "," .. tostring(z) .. "," ..
               tostring(cellMats[cellMat]) .. "," .. 
               tostring(cellBlocks[cellType]) .. ","  ..
-              tostring(cellOrientations[cellOrientation]) .. "," ..
-              surroundBits ..
-              "}\n"
+              tostring(cellOrientations[cellOrientation])
+            
+            if surroundBits then 
+              str = str .. "," .. tostring(surroundBits)
+            end
+
+            str = str .. "}\n"
             
             if count > 0 then
               str = "," .. str
@@ -313,4 +269,5 @@ end
 
 f.Parent = terrainFolder
 
-print("Done!")
+local elapsed = os.time() - startTime
+print("Done! Took " .. tostring(elapsed) .. " seconds.")

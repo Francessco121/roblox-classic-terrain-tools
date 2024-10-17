@@ -47,10 +47,29 @@ local CELL_TYPE_HORIZONTAL_WEDGE = 4
 
 local CELL_FACE_TYPE_EMPTY = 0
 local CELL_FACE_TYPE_SQUARE = 1
-local CELL_FACE_TYPE_TRIANGLE = 2
+local CELL_FACE_TYPE_TRIANGLE_BOTTOM_LEFT = 2
+local CELL_FACE_TYPE_TRIANGLE_BOTTOM_RIGHT = 3
+local CELL_FACE_TYPE_TRIANGLE_Y_AXIS = 4 -- for top/bottom faces only
+
+local CELL_FACE_Y_FLIP_MAP = {
+  [CELL_FACE_TYPE_EMPTY] = CELL_FACE_TYPE_EMPTY,
+  [CELL_FACE_TYPE_SQUARE] = CELL_FACE_TYPE_SQUARE,
+  [CELL_FACE_TYPE_TRIANGLE_BOTTOM_LEFT] = CELL_FACE_TYPE_TRIANGLE_BOTTOM_RIGHT,
+  [CELL_FACE_TYPE_TRIANGLE_BOTTOM_RIGHT] = CELL_FACE_TYPE_TRIANGLE_BOTTOM_LEFT,
+  [CELL_FACE_TYPE_TRIANGLE_Y_AXIS] = CELL_FACE_TYPE_TRIANGLE_Y_AXIS,
+}
+
+local NORMAL_FLIP_MAP = {
+  [Enum.NormalId.Right] = Enum.NormalId.Left,
+  [Enum.NormalId.Top] = Enum.NormalId.Bottom,
+  [Enum.NormalId.Back] = Enum.NormalId.Front,
+  [Enum.NormalId.Left] = Enum.NormalId.Right,
+  [Enum.NormalId.Bottom] = Enum.NormalId.Top,
+  [Enum.NormalId.Front] = Enum.NormalId.Back
+}
 
 type Surround = {
-  IsTop: boolean,
+  Top: boolean,
   Bottom: boolean,
   Left: boolean,
   Right: boolean,
@@ -75,6 +94,7 @@ type Voxel = {
   Type: number, -- CellBlock
   Orientation: number, -- CellOrientation
   Surround: Surround,
+  IsTop: boolean | nil,
   Extents: Extents | nil,
   Extended: boolean | nil
 }
@@ -112,18 +132,18 @@ local function GetVoxel(voxels: VoxelMap, x: number, y: number, z: number): Voxe
 end
 
 local function ParseSurround(surround): Surround 
-  if typeof(surround) == "string" then
+  if typeof(surround) == "number" then
     return {
-      IsTop = string.sub(surround, 1, 1) == "1",
-      Bottom = string.sub(surround, 2, 2) == "1",
-      Left = string.sub(surround, 3, 3) == "1",
-      Right = string.sub(surround, 4, 4) == "1",
-      Back = string.sub(surround, 5, 5) == "1",
-      Front = string.sub(surround, 6, 6) == "1",
+      Top = bit32.extract(surround, 5) == 1,
+      Bottom = bit32.extract(surround, 4) == 1,
+      Left = bit32.extract(surround, 3) == 1,
+      Right = bit32.extract(surround, 2) == 1,
+      Front = bit32.extract(surround, 1) == 1,
+      Back = bit32.extract(surround, 0) == 1
     }
   else
     return {
-      IsTop = (surround == 1),
+      Top = false,
       Bottom = false,
       Left = false,
       Right = false,
@@ -137,7 +157,7 @@ local function ParseVoxel(cell: any): Voxel
   local x = cell[1]
   local y = cell[2]
   local z = cell[3]
-  local cellMat = cell[4] - 2
+  local cellMat = cell[4] - 2 -- Map old Roblox enums to our script enums
   local cellType = cell[5] - 1
   local cellOrientation = cell[6] - 1
   local surround = ParseSurround(cell[7])
@@ -155,45 +175,27 @@ local function ParseVoxel(cell: any): Voxel
   return voxel
 end
 
+local function IsVoxelAt(voxels: VoxelMap, x: number, y: number, z: number, type: number, orientation: number): boolean
+  local voxel = GetVoxel(voxels, x, y, z)
+
+  if voxel == nil then
+    return false
+  end
+
+  return voxel.Type == type and voxel.Orientation == orientation
+end
+
 local function IsSameVoxel(a: Voxel, b: Voxel): boolean
   return a.Mat == b.Mat
     and a.Type == b.Type
     and a.Orientation == b.Orientation
-    and a.Surround.IsTop == b.Surround.IsTop
-    and (a.Surround.Bottom == b.Surround.Bottom --[[or (not a.Surround.Bottom and b.Surround.Bottom)]])
-    and (a.Surround.Left == b.Surround.Left 		--[[or (not a.Surround.Left and b.Surround.Left)]])
-    and (a.Surround.Right == b.Surround.Right		--[[or (not a.Surround.Right and b.Surround.Right)]])
-    and (a.Surround.Back == b.Surround.Back 		--[[or (not a.Surround.Back and b.Surround.Back)]])
-    and (a.Surround.Front == b.Surround.Front 	--[[or (not a.Surround.Front and b.Surround.Front)]])
-end
-
--- TODO: fix and remove
-local function PatchVoxel(voxel: Voxel, voxels: VoxelMap): ()
-  -- Some voxels got exported incorrectly, just fix them here
-  if voxel.Type == CELL_TYPE_INVERSE_CORNER_WEDGE then
-    -- Inverse corner wedge IsTop is incorrect
-    local above = GetVoxel(voxels, voxel.X, voxel.Y + 1, voxel.Z)
-
-    if above then
-      voxel.Surround.IsTop = not (above.Type == CELL_TYPE_CORNER_WEDGE and above.Orientation == voxel.Orientation)
-    else
-      voxel.Surround.IsTop = true
-    end
-  elseif voxel.Type == CELL_TYPE_SOLID then
-    -- Solid IsTop is wrong in some cases
-    local above = GetVoxel(voxels, voxel.X, voxel.Y + 1, voxel.Z)
-
-    if above then
-      voxel.Surround.IsTop = (above.Type == CELL_TYPE_CORNER_WEDGE or above.Type == CELL_TYPE_HORIZONTAL_WEDGE)
-    end
-  elseif voxel.Type == CELL_TYPE_HORIZONTAL_WEDGE then
-    -- HorizontalWedge IsTop is wrong in some cases
-    local above = GetVoxel(voxels, voxel.X, voxel.Y + 1, voxel.Z)
-
-    if above then
-      voxel.Surround.IsTop = false
-    end
-  end
+    and a.Surround.Top == b.Surround.Top
+    and a.Surround.Bottom == b.Surround.Bottom
+    and a.Surround.Left == b.Surround.Left
+    and a.Surround.Right == b.Surround.Right
+    and a.Surround.Back == b.Surround.Back
+    and a.Surround.Front == b.Surround.Front
+    and a.IsTop == b.IsTop
 end
 
 --[[
@@ -316,8 +318,10 @@ local function GetCellFace(voxel: Voxel, normal: Enum.NormalId): number
     face = CELL_FACE_TYPE_SQUARE
   elseif cellType == CELL_TYPE_VERTICAL_WEDGE then
     -- VerticalWedge
-    if normal == Enum.NormalId.Left or normal == Enum.NormalId.Right then
-      face = CELL_FACE_TYPE_TRIANGLE
+    if normal == Enum.NormalId.Left then
+      face = CELL_FACE_TYPE_TRIANGLE_BOTTOM_LEFT
+    elseif normal == Enum.NormalId.Right then
+      face = CELL_FACE_TYPE_TRIANGLE_BOTTOM_RIGHT
     elseif normal == Enum.NormalId.Back or normal == Enum.NormalId.Top then
       face = CELL_FACE_TYPE_EMPTY
     elseif normal == Enum.NormalId.Front or normal == Enum.NormalId.Bottom then
@@ -327,13 +331,21 @@ local function GetCellFace(voxel: Voxel, normal: Enum.NormalId): number
     -- CornerWedge
     if normal == Enum.NormalId.Left or normal == Enum.NormalId.Back or normal == Enum.NormalId.Top then
       face = CELL_FACE_TYPE_EMPTY
-    elseif normal == Enum.NormalId.Right or normal == Enum.NormalId.Front or normal == Enum.NormalId.Bottom then
-      face = CELL_FACE_TYPE_TRIANGLE
+    elseif normal == Enum.NormalId.Right then
+      face = CELL_FACE_TYPE_TRIANGLE_BOTTOM_RIGHT
+    elseif normal == Enum.NormalId.Front then
+      face = CELL_FACE_TYPE_TRIANGLE_BOTTOM_LEFT
+    elseif normal == Enum.NormalId.Bottom then
+      face = CELL_FACE_TYPE_TRIANGLE_Y_AXIS
     end
   elseif cellType == CELL_TYPE_INVERSE_CORNER_WEDGE then
     -- InverseCornerWedge
-    if normal == Enum.NormalId.Left or normal == Enum.NormalId.Back or normal == Enum.NormalId.Top then
-      face = CELL_FACE_TYPE_TRIANGLE
+    if normal == Enum.NormalId.Back then
+      face = CELL_FACE_TYPE_TRIANGLE_BOTTOM_RIGHT
+    elseif normal == Enum.NormalId.Left then
+      face = CELL_FACE_TYPE_TRIANGLE_BOTTOM_LEFT
+    elseif normal == Enum.NormalId.Top then
+      face = CELL_FACE_TYPE_TRIANGLE_Y_AXIS
     elseif normal == Enum.NormalId.Right or normal == Enum.NormalId.Front or normal == Enum.NormalId.Bottom then
       face = CELL_FACE_TYPE_SQUARE
     end
@@ -344,28 +356,51 @@ local function GetCellFace(voxel: Voxel, normal: Enum.NormalId): number
     elseif normal == Enum.NormalId.Right or normal == Enum.NormalId.Front then
       face = CELL_FACE_TYPE_SQUARE
     elseif normal == Enum.NormalId.Top or normal == Enum.NormalId.Bottom then
-      face = CELL_FACE_TYPE_TRIANGLE
+      face = CELL_FACE_TYPE_TRIANGLE_Y_AXIS
     end
   end
 
   return face
 end
 
-local function ShouldCullTexture(ourFace: number, theirFace: number): boolean
-  if ourFace == CELL_FACE_TYPE_EMPTY then return false end
+local function ShouldCullTexture(our: Voxel, their: Voxel, ourNormal: Enum.NormalId): boolean
+  local theirNormal = NORMAL_FLIP_MAP[ourNormal]
   
-  if ourFace ~= CELL_FACE_TYPE_SQUARE and theirFace == CELL_FACE_TYPE_SQUARE then
+  local ourFace = GetCellFace(our, ourNormal)
+  local theirFace = GetCellFace(their, theirNormal)
+
+  if ourFace == CELL_FACE_TYPE_EMPTY then
+    -- Empty face, nothing to display
     return true
   end
 
-  return ourFace == theirFace
+  if theirFace == CELL_FACE_TYPE_SQUARE then
+    -- Square faces always cull our face
+    return true
+  end
+
+  if ourFace == CELL_FACE_TYPE_SQUARE then
+    -- Only squares can cull our square face
+    return false
+  end
+
+  -- Only triangle faces from here on
+
+  -- For top/bottom, if the cell orientation matches then the faces line up
+  if ourNormal == Enum.NormalId.Top or ourNormal == Enum.NormalId.Bottom then
+    return our.Orientation == their.Orientation
+  end
+
+  -- For left/right/back/front, if the faces are flipped versions of each other 
+  -- along the Y-axis, then the faces line up
+  return ourFace == CELL_FACE_Y_FLIP_MAP[theirFace]
 end
 
 local function TextureCull(voxel: Voxel, voxels: VoxelMap): ()
   if not voxel.Surround.Left then
     local left = GetVoxel(voxels, voxel.X - 1, voxel.Y, voxel.Z)
 
-    if left ~= nil and ShouldCullTexture(GetCellFace(voxel, Enum.NormalId.Left), GetCellFace(left, Enum.NormalId.Right)) then
+    if left ~= nil and ShouldCullTexture(voxel, left, Enum.NormalId.Left) then
       voxel.Surround.Left = true
     end
   end
@@ -373,7 +408,7 @@ local function TextureCull(voxel: Voxel, voxels: VoxelMap): ()
   if not voxel.Surround.Right then
     local right = GetVoxel(voxels, voxel.X + 1, voxel.Y, voxel.Z)
 
-    if right ~= nil and ShouldCullTexture(GetCellFace(voxel, Enum.NormalId.Right), GetCellFace(right, Enum.NormalId.Left)) then
+    if right ~= nil and ShouldCullTexture(voxel, right, Enum.NormalId.Right) then
       voxel.Surround.Right = true
     end
   end
@@ -381,17 +416,23 @@ local function TextureCull(voxel: Voxel, voxels: VoxelMap): ()
   if not voxel.Surround.Bottom then
     local below = GetVoxel(voxels, voxel.X, voxel.Y - 1, voxel.Z)
 
-    if below ~= nil and ShouldCullTexture(GetCellFace(voxel, Enum.NormalId.Bottom), GetCellFace(below, Enum.NormalId.Top)) then
+    if below ~= nil and ShouldCullTexture(voxel, below, Enum.NormalId.Bottom) then
       voxel.Surround.Bottom = true
     end
   end
 
-  -- TODO: top culling, IsTop doesn't necessarily mean surrounded on top? check this
+  if not voxel.Surround.Top then
+    local above = GetVoxel(voxels, voxel.X, voxel.Y + 1, voxel.Z)
+
+    if above ~= nil and ShouldCullTexture(voxel, above, Enum.NormalId.Top) then
+      voxel.Surround.Top = true
+    end
+  end
 
   if not voxel.Surround.Back then
     local behind = GetVoxel(voxels, voxel.X, voxel.Y, voxel.Z + 1)
 
-    if behind ~= nil and ShouldCullTexture(GetCellFace(voxel, Enum.NormalId.Back), GetCellFace(behind, Enum.NormalId.Front)) then
+    if behind ~= nil and ShouldCullTexture(voxel, behind, Enum.NormalId.Back) then
       voxel.Surround.Back = true
     end
   end
@@ -399,9 +440,38 @@ local function TextureCull(voxel: Voxel, voxels: VoxelMap): ()
   if not voxel.Surround.Front then
     local front = GetVoxel(voxels, voxel.X, voxel.Y, voxel.Z - 1)
 
-    if front ~= nil and ShouldCullTexture(GetCellFace(voxel, Enum.NormalId.Front), GetCellFace(front, Enum.NormalId.Back)) then
+    if front ~= nil and ShouldCullTexture(voxel, front, Enum.NormalId.Front) then
       voxel.Surround.Front = true
     end
+  end
+end
+
+local function DetermineIsTop(voxel: Voxel, voxels: VoxelMap): ()
+  if voxel.Type == CELL_TYPE_VERTICAL_WEDGE then
+    -- VerticalWedge
+    if voxel.Orientation == CELL_ORIENTATION_0 then
+      voxel.IsTop = not IsVoxelAt(voxels, voxel.X, voxel.Y + 1, voxel.Z - 1, CELL_TYPE_VERTICAL_WEDGE, voxel.Orientation)
+    elseif voxel.Orientation == CELL_ORIENTATION_90 then
+      voxel.IsTop = not IsVoxelAt(voxels, voxel.X - 1, voxel.Y + 1, voxel.Z, CELL_TYPE_VERTICAL_WEDGE, voxel.Orientation)
+    elseif voxel.Orientation == CELL_ORIENTATION_180 then
+      voxel.IsTop = not IsVoxelAt(voxels, voxel.X, voxel.Y + 1, voxel.Z + 1, CELL_TYPE_VERTICAL_WEDGE, voxel.Orientation)
+    elseif voxel.Orientation == CELL_ORIENTATION_270 then
+      voxel.IsTop = not IsVoxelAt(voxels, voxel.X + 1, voxel.Y + 1, voxel.Z, CELL_TYPE_VERTICAL_WEDGE, voxel.Orientation)
+    end
+  elseif voxel.Type == CELL_TYPE_CORNER_WEDGE then
+    -- CornerWedge
+    if voxel.Orientation == CELL_ORIENTATION_0 then
+      voxel.IsTop = not IsVoxelAt(voxels, voxel.X + 1, voxel.Y + 1, voxel.Z - 1, CELL_TYPE_INVERSE_CORNER_WEDGE, voxel.Orientation)
+    elseif voxel.Orientation == CELL_ORIENTATION_90 then
+      voxel.IsTop = not IsVoxelAt(voxels, voxel.X - 1, voxel.Y + 1, voxel.Z - 1, CELL_TYPE_INVERSE_CORNER_WEDGE, voxel.Orientation)
+    elseif voxel.Orientation == CELL_ORIENTATION_180 then
+      voxel.IsTop = not IsVoxelAt(voxels, voxel.X - 1, voxel.Y + 1, voxel.Z + 1, CELL_TYPE_INVERSE_CORNER_WEDGE, voxel.Orientation)
+    elseif voxel.Orientation == CELL_ORIENTATION_270 then
+      voxel.IsTop = not IsVoxelAt(voxels, voxel.X + 1, voxel.Y + 1, voxel.Z + 1, CELL_TYPE_INVERSE_CORNER_WEDGE, voxel.Orientation)
+    end
+  else
+    -- Solid/InverseCornerWedge/HorizontalWedge
+    voxel.IsTop = GetVoxel(voxels, voxel.X, voxel.Y + 1, voxel.Z) == nil
   end
 end
 
@@ -1182,7 +1252,7 @@ local textures: { [number]: MaterialTextures } = {
 
 local function GetSurroundFromNormal(surround: Surround, normal: Enum.NormalId): boolean
   if normal == Enum.NormalId.Top then
-    return not surround.IsTop
+    return surround.Top
   elseif normal == Enum.NormalId.Bottom then
     return surround.Bottom
   elseif normal == Enum.NormalId.Left then
@@ -1214,10 +1284,10 @@ local function SetUpTexture(part: BasePart, voxel: Voxel, texs: MaterialTextures
       xUV = -(part.Position.Z + (part.Size.Z / 2))
       yUV = -(part.Position.Y + (part.Size.Y / 2))
     elseif normal == Enum.NormalId.Back then
-      xUV = (part.Position.X - (part.Size.X / 2))
+      xUV = -(part.Position.X + (part.Size.X / 2))
       yUV = -(part.Position.Y + (part.Size.Y / 2))
     else -- Front
-      xUV = -(part.Position.X + (part.Size.X / 2))
+      xUV = (part.Position.X - (part.Size.X / 2))
       yUV = -(part.Position.Y + (part.Size.Y / 2))
     end
   else
@@ -1235,10 +1305,10 @@ local function SetUpTexture(part: BasePart, voxel: Voxel, texs: MaterialTextures
       xUV = -part.Position.Z
       yUV = -part.Position.Y
     elseif normal == Enum.NormalId.Back then
-      xUV = part.Position.X
+      xUV = -part.Position.X
       yUV = -part.Position.Y
     else -- Front
-      xUV = -part.Position.X
+      xUV = part.Position.X
       yUV = -part.Position.Y
     end
   end
@@ -1297,7 +1367,7 @@ local function SetUpTexture(part: BasePart, voxel: Voxel, texs: MaterialTextures
     tex.OffsetStudsU = xUV
     tex.OffsetStudsV = yUV
   else -- Left, Right, Back, Front
-    if voxel.Surround.IsTop then
+    if voxel.IsTop then
       if slope then
         tex.Texture = texs.SlopeTop[if voxel.Type == CELL_TYPE_VERTICAL_WEDGE then 2 else 1]
       else
@@ -1453,6 +1523,8 @@ local function MakePart(voxel: Voxel): BasePart | nil
   return p
 end
 
+local startTime = os.clock()
+
 local voxels: VoxelMap = {} -- 3d array
 local queue: {Voxel} = {}
 
@@ -1470,23 +1542,21 @@ for _, chunk in ipairs(voxelsFolder:GetChildren()) do
   local cells = require(chunk)
 
   for i, cell in ipairs(cells) do
-    if (cell[4] - 2) ~= 16 then
-      local voxel = ParseVoxel(cell)
-      
-      StoreVoxel(voxels, voxel.X, voxel.Y, voxel.Z, voxel)
-      table.insert(queue, voxel)
-    end
+    local voxel = ParseVoxel(cell)
+    
+    StoreVoxel(voxels, voxel.X, voxel.Y, voxel.Z, voxel)
+    table.insert(queue, voxel)
   end
 end
 
 -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- 
--- MARK: Patching
-print("Patching...")
+-- MARK: Texture culling
+print("Culling texture faces...")
 wait()
 
 for i, voxel in ipairs(queue) do
-  PatchVoxel(voxel, voxels)
   TextureCull(voxel, voxels)
+  DetermineIsTop(voxel, voxels)
 
   if i % 5000 == 0 then
     print(tostring(i) .. "/" .. tostring(#queue))
@@ -1537,6 +1607,10 @@ end
 
 submodel.Parent = model
 
-print("Done. Part count = " .. tostring(count))
+local elapsed = os.clock() - startTime
+print("Done. Part count = " .. tostring(count) .. ". Took " .. tostring(elapsed) .. " seconds.")
 
 model.Parent = workspace
+
+local ChangeHistoryService = game:GetService("ChangeHistoryService")
+ChangeHistoryService:SetWaypoint("Import classic terrain")
