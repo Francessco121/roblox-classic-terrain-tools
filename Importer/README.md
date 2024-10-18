@@ -38,10 +38,10 @@ Porting classic voxel terrain into modern Roblox is a two step process with thes
 - The latest version of Roblox Studio.
 
 #### Steps
-- (One time step) Insert the [LegacyTerrainAssets.rbxm](./LegacyTerrainAssets.rbxm) file into `ServerStorage`. This contains necessary assets for generating the terrain parts.
-- Copy (right-click -> copy or `Ctrl+C`) the generated `Voxels` folder that the export script created and then paste it somewhere in a place opened up in a modern version of studio. For example, you could paste it under `Workspace`.
-- Select the `Voxels` folder in the `Explorer` window and then run the [ImportTerrain.lua](./ImportTerrain.lua) script by clicking `Model -> Run Script` in the studio ribbonbar. Tip: this script can take a while, open the `Output` window to view its progress.
-- When complete, you will see a `LegacyTerrain` model appear under `Workspace`.
+1. (One time step) Insert the [LegacyTerrainAssets.rbxm](./LegacyTerrainAssets.rbxm) file into `ServerStorage`. This contains necessary assets for generating the terrain parts.
+2. Copy (right-click -> copy or `Ctrl+C`) the generated `Voxels` folder that the export script created and then paste it somewhere in a place opened up in a modern version of studio. For example, you could paste it under `Workspace`.
+3. Select the `Voxels` folder in the `Explorer` window and then run the [ImportTerrain.lua](./ImportTerrain.lua) script by clicking `Model -> Run Script` in the studio ribbonbar. Tip: this script can take a while, open the `Output` window to view its progress.
+4. When complete, you will see a `LegacyTerrain` model appear under `Workspace`.
 
 #### Tips
 - When re-importing terrain, delete the old `LegacyTerrain` model first to save on memory/processing power.
