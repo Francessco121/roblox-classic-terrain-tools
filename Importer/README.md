@@ -25,8 +25,8 @@ Porting classic voxel terrain into modern Roblox is a two step process with thes
 
 #### Tips (for avoiding studio freezing/crashing)
 - Never use the move/resize tools on a `KeepArea` while it's touching/inside of terrain. **This WILL horribly freeze studio** once the part is a decent size and touches a lot of voxels.
-- For the same reason as above, never set the `Size` property of a `KeepArea` while it's inside of the terrain. Setting the `Position` property is **OK**.
-- Resize `KeepArea`s above the terrain out in the open and then set the `Position.Y` property in the `Properties` window directly to move it down into the terrain. Be sure to use the `Position.Y` property again to move it out of the terrain before resizing the area again!
+- For the same reason as above, never set the `Size` property of a `KeepArea` while it's inside of the terrain. **Setting the `Position` property is OK**.
+- Resize `KeepArea`s above the terrain out in the open and then set the `Position.Y` property in the `Properties` window directly to move it down into the terrain. Be sure to use the `Position.Y` property again to move it out of the terrain before resizing the area!
 - Don't modify areas of terrain touching `KeepArea`s, this will lag about as much moving the areas around.
 - Use the `Command Bar` to move terrain folders out of `Workspace` and into something else like `Lighting` when you need to edit the actual terrain. Dragging the folder will cause all of the areas to pop out of the terrain, you have to script the move.
 - Avoid saving the place file with a generated `Voxels` folder. This can massively increase the file size of the place and may prevent studio from loading it in the future (backups are your friends!).
