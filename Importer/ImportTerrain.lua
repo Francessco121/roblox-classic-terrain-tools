@@ -130,6 +130,7 @@ type Voxel = {
 }
 
 type VoxelMap = {{{Voxel}}} -- 3d array
+type PartMap = {{{BasePart}}} -- 3d array
 
 local function StoreVoxel(voxels: VoxelMap, x: number, y: number, z: number, voxel: Voxel): ()
   local xt = voxels[x]
@@ -159,6 +160,36 @@ local function GetVoxel(voxels: VoxelMap, x: number, y: number, z: number): Voxe
   end
 
   return yt[z]
+end
+
+local function StorePart3D(parts: PartMap, x: number, y: number, z: number, part: BasePart): ()
+	local xt = parts[x]
+	if xt == nil then
+		xt = {}
+		parts[x] = xt
+	end
+
+	local yt = xt[y]
+	if yt == nil then
+		yt = {}
+		xt[y] = yt
+	end
+
+	yt[z] = part
+end
+
+local function GetPart3D(parts: PartMap, x: number, y: number, z: number): BasePart | nil
+	local xt = parts[x]
+	if xt == nil then
+		return nil
+	end
+
+	local yt = xt[y]
+	if yt == nil then
+		return nil
+	end
+
+	return yt[z]
 end
 
 local function ParseSurround(surround): Surround 
@@ -596,6 +627,81 @@ local function TryExtendVoxel(voxel: Voxel, voxels: VoxelMap): ()
   end
 end
 
+local function LinkBreakableVoxels(partVoxels: {{ Part: BasePart, Voxel: Voxel }}, globalVoxels: VoxelMap): ()
+	local partMap: PartMap = {}
+	for _, pair in partVoxels do
+		local part = pair.Part
+		local voxel = pair.Voxel
+		
+		StorePart3D(partMap, voxel.X, voxel.Y, voxel.Z, part)
+	end
+	
+	for _, pair in partVoxels do
+		local part = pair.Part
+		local voxel = pair.Voxel
+		
+		-- Check if this voxel is next to a non-breakable voxel
+		local isAnchor = 
+			   GetVoxel(globalVoxels, voxel.X - 1, voxel.Y, voxel.Z) ~= nil
+			or GetVoxel(globalVoxels, voxel.X + 1, voxel.Y, voxel.Z) ~= nil
+			or GetVoxel(globalVoxels, voxel.X, voxel.Y - 1, voxel.Z) ~= nil
+			or GetVoxel(globalVoxels, voxel.X, voxel.Y + 1, voxel.Z) ~= nil
+			or GetVoxel(globalVoxels, voxel.X, voxel.Y, voxel.Z - 1) ~= nil
+			or GetVoxel(globalVoxels, voxel.X, voxel.Y, voxel.Z + 1) ~= nil
+		
+		local anchorVal = Instance.new("BoolValue")
+		anchorVal.Name = "Anchor"
+		anchorVal.Value = isAnchor
+		anchorVal.Parent = part
+		
+		if not isAnchor then
+			local left = GetPart3D(partMap, voxel.X - 1, voxel.Y, voxel.Z)
+			local right = GetPart3D(partMap, voxel.X + 1, voxel.Y, voxel.Z)
+			local below = GetPart3D(partMap, voxel.X, voxel.Y - 1, voxel.Z)
+			local above = GetPart3D(partMap, voxel.X, voxel.Y + 1, voxel.Z)
+			local behind = GetPart3D(partMap, voxel.X, voxel.Y, voxel.Z + 1)
+			local front = GetPart3D(partMap, voxel.X, voxel.Y, voxel.Z - 1)
+			
+			if left ~= nil then
+				local val = Instance.new("ObjectValue")
+				val.Name = "Left"
+				val.Value = left
+				val.Parent = part
+			end
+			if right ~= nil then
+				local val = Instance.new("ObjectValue")
+				val.Name = "Right"
+				val.Value = right
+				val.Parent = part
+			end
+			if below ~= nil then
+				local val = Instance.new("ObjectValue")
+				val.Name = "Below"
+				val.Value = below
+				val.Parent = part
+			end
+			if above ~= nil then
+				local val = Instance.new("ObjectValue")
+				val.Name = "Above"
+				val.Value = above
+				val.Parent = part
+			end
+			if behind ~= nil then
+				local val = Instance.new("ObjectValue")
+				val.Name = "Behind"
+				val.Value = behind
+				val.Parent = part
+			end
+			if front ~= nil then
+				local val = Instance.new("ObjectValue")
+				val.Name = "Front"
+				val.Value = front
+				val.Parent = part
+			end
+		end		
+	end
+end
+
 -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- 
 -- MARK: Texture Functions
 type MaterialTextures = {
@@ -1013,7 +1119,7 @@ local function GetSurroundFromNormal(surround: Surround, normal: Enum.NormalId):
   end
 end
 
-local function SetUpTexture(part: BasePart, voxel: Voxel, texs: MaterialTextures, normal: Enum.NormalId, face: Enum.NormalId, slope: boolean): ()
+local function SetUpTexture(part: BasePart, voxel: Voxel, texs: MaterialTextures, normal: Enum.NormalId, face: Enum.NormalId, slope: boolean): Texture
   -- Calculate UVs
   local xUV, yUV
   if voxel.Type == CELL_TYPE_SOLID then
@@ -1148,9 +1254,11 @@ local function SetUpTexture(part: BasePart, voxel: Voxel, texs: MaterialTextures
   else
     tex.Parent = part
   end
+
+  return tex
 end
 
-local function SetUpTextures(part: BasePart, voxel: Voxel): ()
+local function SetUpTextures(part: BasePart, voxel: Voxel, breakable: boolean): ()
   local cellType = voxel.Type
   local cellOrientation = voxel.Orientation
   local surround = voxel.Surround
@@ -1165,8 +1273,17 @@ local function SetUpTextures(part: BasePart, voxel: Voxel): ()
   for _, normal in ipairs(normals) do
     local face = CELL_FACE_ORIENTATION_INVERSE_MAP[normal][cellOrientation]
 
-    if not GetSurroundFromNormal(surround, normal) and not IsSlopeOrDiagonalFace(cellType, face) then
-      SetUpTexture(part, voxel, texs, normal, face, --[[slope]]false)
+    if not breakable then
+      if not GetSurroundFromNormal(surround, normal) and not IsSlopeOrDiagonalFace(cellType, face) then
+        SetUpTexture(part, voxel, texs, normal, face, --[[slope]]false)
+      end
+    else
+      if not IsSlopeOrDiagonalFace(cellType, face) then
+        local tex = SetUpTexture(part, voxel, texs, normal, face, --[[slope]]false)
+        if GetSurroundFromNormal(surround, normal) then
+          tex.Transparency = 1
+        end
+      end
     end
   end
 
@@ -1216,7 +1333,7 @@ local assets = {
   HorizontalWedge = AssertAsset("HorizontalWedge")
 }
 
-local function MakePart(voxel: Voxel): BasePart | nil
+local function MakePart(voxel: Voxel, breakable: boolean): BasePart | nil
   local x = voxel.X * 4 + 2
   local y = voxel.Y * 4 + 2
   local z = voxel.Z * 4 + 2
@@ -1276,7 +1393,7 @@ local function MakePart(voxel: Voxel): BasePart | nil
     slope.Size = p.Size
   end
 
-  SetUpTextures(p, voxel)
+  SetUpTextures(p, voxel, breakable)
 
   return p
 end
@@ -1285,6 +1402,9 @@ local startTime = os.clock()
 
 local voxels: VoxelMap = {} -- 3d array
 local queue: {Voxel} = {}
+
+local breakableVoxels: { [string]: VoxelMap } = {}  -- 3d array
+local breakableQueues: { [string]: {Voxel} } = {}
 
 local model = Instance.new("Model")
 model.Name = "LegacyTerrain"
@@ -1297,13 +1417,37 @@ for _, chunk in ipairs(voxelsFolder:GetChildren()) do
     continue
   end
 
+  local isBreakable = string.sub(chunk.Name, 1, 10) == "Breakable_"
+  local breakableQueue = nil
+  local breakableVoxelArray = nil
+  if isBreakable then
+    local breakableName = string.sub(chunk.Name, 11)
+    
+    breakableQueue = breakableQueues[breakableName]
+    if breakableQueue == nil then
+      breakableQueue = {}
+      breakableQueues[breakableName] = breakableQueue
+    end
+    
+    breakableVoxelArray = breakableVoxels[breakableName]
+    if breakableVoxelArray == nil then
+      breakableVoxelArray = {}
+      breakableVoxels[breakableName] = breakableVoxelArray
+    end
+  end
+
   local cells = require(chunk)
 
   for i, cell in ipairs(cells) do
     local voxel = ParseVoxel(cell)
-    
-    StoreVoxel(voxels, voxel.X, voxel.Y, voxel.Z, voxel)
-    table.insert(queue, voxel)
+
+    if not isBreakable then
+      StoreVoxel(voxels, voxel.X, voxel.Y, voxel.Z, voxel)
+      table.insert(queue, voxel)
+    else
+      StoreVoxel(breakableVoxelArray, voxel.X, voxel.Y, voxel.Z, voxel)
+      table.insert(breakableQueue, voxel)
+    end
   end
 end
 
@@ -1329,26 +1473,49 @@ print("Building parts...")
 wait()
 
 local count = 0
-local submodel = Instance.new("Model")
-submodel.Name = "Chunk"
 
-for _, voxel in ipairs(queue) do
-  if not voxel.Extended then
-    local part = MakePart(voxel)
-    if part ~= nil then
-      part.Parent = submodel
-      count = count + 1
+do
+  local submodel = Instance.new("Model")
+  submodel.Name = "Chunk"
 
-      if (count % 2000) == 0 then
-        submodel.Parent = model
-        submodel = Instance.new("Model")
-        submodel.Name = "Chunk"
+  for _, voxel in ipairs(queue) do
+    if not voxel.Extended then
+      local part = MakePart(voxel, --[[breakable]]false)
+      if part ~= nil then
+        part.Parent = submodel
+        count = count + 1
+
+        if (count % 2000) == 0 then
+          submodel.Parent = model
+          submodel = Instance.new("Model")
+          submodel.Name = "Chunk"
+        end
       end
     end
   end
+
+  submodel.Parent = model
 end
 
-submodel.Parent = model
+for name, _breakableVoxels in pairs(breakableQueues) do
+  local submodel = Instance.new("Model")
+  submodel.Name = "Breakable_" .. name
+  
+  local partVoxels: {{ Part: BasePart, Voxel: Voxel }} = {}
+  
+  for _, voxel in ipairs(_breakableVoxels) do
+    local part = MakePart(voxel, --[[breakable]]true)
+    if part ~= nil then
+      part.Parent = submodel
+      count = count + 1
+      table.insert(partVoxels, {Part = part, Voxel = voxel})
+    end
+  end
+  
+  LinkBreakableVoxels(partVoxels, voxels)
+  
+  submodel.Parent = model
+end
 
 local elapsed = os.clock() - startTime
 print("Done. Part count = " .. tostring(count) .. ". Took " .. tostring(elapsed) .. " seconds.")
