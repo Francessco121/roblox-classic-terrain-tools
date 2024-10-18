@@ -6,6 +6,8 @@ The tools in this repository make it possible to port older Roblox games that re
 > [!IMPORTANT]
 > All of the tools and scripts in this repository are designed with 2014 builds of Roblox Studio in mind. Other versions from around that time *may* work but it's not guaranteed.
 
+![](./Importer/Screenshots/Screenshot2.png)
+
 ## Porting Classic Terrain
 See the scripts in the [`Importer`](./Importer) folder for bringing classic voxel terrain into modern Roblox. This process will effectively recreate the terrain as parts. This requires a place file open in an older version of Roblox Studio that existed before smooth terrain was introduced. Additionally, the place file must not have already been auto-converted to smooth terrain. The original terrain cannot be recovered after it was converted to smooth terrain.
 

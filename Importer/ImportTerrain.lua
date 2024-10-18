@@ -4,31 +4,6 @@
 
   A script to convert the generated Voxels ModuleScripts created by the ExportTerrain
   script into a bunch of parts that accurately recreate the exported voxels.
-
-  HOW TO RUN:
-  - Insert the LegacyTerrainAssets.rbxm file into ServerStorage. This contains necessary
-    assets for generating the terrain parts.
-  - Copy (right-click -> copy or Ctrl+C) the generated Voxels folder that the
-    ExportTerrain script created and then paste it somewhere in a place opened up
-    in a modern version of studio. For example, you could paste it under Workspace.
-  - Select the Voxels folder in the Explorer window and then run this script by
-    clicking Model -> Run Script in the studio ribbonbar. Tip: this script can take
-    a while, open the Output window to view its progress.
-  - When complete, you will see a LegacyTerrain model appear under workspace.
-
-  TIPS:
-  - When re-importing terrain, delete the old LegacyTerrain model first to save on
-    memory/processing power.
-  - Avoid saving the place with the Voxels folder still in it. This can massively
-    increase the file size of the place and may prevent studio from loading it in
-    the future (backups are your friend!).
-  - Consider closing and re-opening studio after a large or multiple terrain imports.
-    Studio tends to leak memory during this process and can very quickly consume all
-    of your system's available memory.
-  - It's recommended to have at least 16 GB of RAM when running this script. Depending
-    on the size of the terrain being imported, this script can result in extreme memory
-    utilization. Lower RAM may work but if studio starts hitting your pagefile, this
-    script may take a very long time to complete.
 --]]
 
 -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- 

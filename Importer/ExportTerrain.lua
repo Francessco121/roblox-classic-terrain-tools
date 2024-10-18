@@ -4,37 +4,6 @@
   A script to be ran in an old version of studio (preferably ~2014) that will
   export marked areas of classic terrain into a folder of ModuleScripts that
   can then be pasted into modern studio and imported.
-
-  HOW TO RUN:
-  - Create a Folder in Workspace named whatever you'd like. This will designate
-    the areas of terrain you want to export.
-  - In the folder, add Parts named KeepArea. These must be positioned and sized
-    to cover any voxels that should be exported. Voxels not inside a KeepArea
-    will be ignored.
-  - When you're ready to export, select the folder and then run this script by
-    clicking the Test -> Run Script button in the studio ribbonbar. Tip: this
-    script can take a while, open the Output window to view its progress.
-  - When complete, you will see a Voxels folder inside the terrain folder. See
-    the ImportTerrain script for what to do with this.
-
-  TIPS FOR AVOIDING STUDIO FREEZING/CRASHING:
-  - Never use the move/resize tools on a KeepArea while it's touching/inside of
-    terrain. This WILL horribly freeze studio once the part is a decent size
-    and touches a lot of voxels.
-  - For the same reason as above, never set the Size property of a KeepArea while
-    it's inside of the terrain. Setting the Position property is OK.
-  - Resize KeepAreas above the terrain out in the open and then set the Position.Y
-    property in the Properties window directly to move it down into the terrain.
-    Be sure to use the Position.Y property again to move it out of the terrain
-    before resizing the area again!
-  - Don't modify areas of terrain touching KeepAreas, this will lag about as much
-    moving the KeepAreas around.
-  - Use the command bar to move terrain folders out of workspace and into something
-    else like Lighting when you need to edit the actual terrain. Dragging the folder
-    will cause all of the areas to pop out of the terrain, you have to script it.
-  - Avoid saving the place file with a generated Voxels folder. This can massively
-    increase the file size of the place and may prevent studio from loading it in
-    the future (backups are your friend!).
 --]]
 
 -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- 
