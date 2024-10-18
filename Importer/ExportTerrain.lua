@@ -38,6 +38,241 @@
 --]]
 
 -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- 
+-- MARK: Helper Functions
+local terrain = workspace.Terrain
+
+local CELL_FACE_TYPE_EMPTY = 0
+local CELL_FACE_TYPE_SQUARE = 1
+local CELL_FACE_TYPE_TRIANGLE_BOTTOM_LEFT = 2
+local CELL_FACE_TYPE_TRIANGLE_BOTTOM_RIGHT = 3
+local CELL_FACE_TYPE_TRIANGLE_Y_AXIS = 4 -- for top/bottom faces only
+
+local FACE_CULL_NONE = 0 -- not culled
+local FACE_CULL_TRIANGLE = 1 -- culled by triangle
+local FACE_CULL_SQUARE = 2 -- culled by square
+local FACE_CULL_NO_FACE = 3 -- cell shape has no face for that normal
+
+local CELL_FACE_Y_FLIP_MAP = {
+  [CELL_FACE_TYPE_EMPTY] = CELL_FACE_TYPE_EMPTY,
+  [CELL_FACE_TYPE_SQUARE] = CELL_FACE_TYPE_SQUARE,
+  [CELL_FACE_TYPE_TRIANGLE_BOTTOM_LEFT] = CELL_FACE_TYPE_TRIANGLE_BOTTOM_RIGHT,
+  [CELL_FACE_TYPE_TRIANGLE_BOTTOM_RIGHT] = CELL_FACE_TYPE_TRIANGLE_BOTTOM_LEFT,
+  [CELL_FACE_TYPE_TRIANGLE_Y_AXIS] = CELL_FACE_TYPE_TRIANGLE_Y_AXIS
+}
+
+local CELL_FACE_ORIENTATION_INVERSE_MAP = {
+  [Enum.NormalId.Top] = {
+    [Enum.CellOrientation.NegZ] = Enum.NormalId.Top,
+    [Enum.CellOrientation.X] = Enum.NormalId.Top,
+    [Enum.CellOrientation.Z] = Enum.NormalId.Top,
+    [Enum.CellOrientation.NegX] = Enum.NormalId.Top
+  },
+  [Enum.NormalId.Bottom] = {
+    [Enum.CellOrientation.NegZ] = Enum.NormalId.Bottom,
+    [Enum.CellOrientation.X] = Enum.NormalId.Bottom,
+    [Enum.CellOrientation.Z] = Enum.NormalId.Bottom,
+    [Enum.CellOrientation.NegX] = Enum.NormalId.Bottom
+  },
+  [Enum.NormalId.Back] = {
+    [Enum.CellOrientation.NegZ] = Enum.NormalId.Back,
+    [Enum.CellOrientation.X] = Enum.NormalId.Left,
+    [Enum.CellOrientation.Z] = Enum.NormalId.Front,
+    [Enum.CellOrientation.NegX] = Enum.NormalId.Right
+  },
+  [Enum.NormalId.Front] = {
+    [Enum.CellOrientation.NegZ] = Enum.NormalId.Front,
+    [Enum.CellOrientation.X] = Enum.NormalId.Right,
+    [Enum.CellOrientation.Z] = Enum.NormalId.Back,
+    [Enum.CellOrientation.NegX] = Enum.NormalId.Left
+  },
+  [Enum.NormalId.Left] = {
+    [Enum.CellOrientation.NegZ] = Enum.NormalId.Left,
+    [Enum.CellOrientation.X] = Enum.NormalId.Front,
+    [Enum.CellOrientation.Z] = Enum.NormalId.Right,
+    [Enum.CellOrientation.NegX] = Enum.NormalId.Back
+  },
+  [Enum.NormalId.Right] = {
+    [Enum.CellOrientation.NegZ] = Enum.NormalId.Right,
+    [Enum.CellOrientation.X] = Enum.NormalId.Back,
+    [Enum.CellOrientation.Z] = Enum.NormalId.Left,
+    [Enum.CellOrientation.NegX] = Enum.NormalId.Front
+  }
+}
+
+local NORMAL_FLIP_MAP = {
+  [Enum.NormalId.Right] = Enum.NormalId.Left,
+  [Enum.NormalId.Top] = Enum.NormalId.Bottom,
+  [Enum.NormalId.Back] = Enum.NormalId.Front,
+  [Enum.NormalId.Left] = Enum.NormalId.Right,
+  [Enum.NormalId.Bottom] = Enum.NormalId.Top,
+  [Enum.NormalId.Front] = Enum.NormalId.Back
+}
+
+local function GetCellFace(cellType, cellOrientation, normal)
+  -- Account for cell orientation (below code assumes identity rotation)
+  normal = CELL_FACE_ORIENTATION_INVERSE_MAP[normal][cellOrientation]
+
+  -- Determine face type
+  local face = CELL_FACE_TYPE_EMPTY
+
+  if cellType == Enum.CellBlock.Solid then
+    -- Solid
+    face = CELL_FACE_TYPE_SQUARE
+  elseif cellType == Enum.CellBlock.VerticalWedge then
+    -- VerticalWedge
+    if normal == Enum.NormalId.Left then
+      face = CELL_FACE_TYPE_TRIANGLE_BOTTOM_LEFT
+    elseif normal == Enum.NormalId.Right then
+      face = CELL_FACE_TYPE_TRIANGLE_BOTTOM_RIGHT
+    elseif normal == Enum.NormalId.Back or normal == Enum.NormalId.Top then
+      face = CELL_FACE_TYPE_EMPTY
+    elseif normal == Enum.NormalId.Front or normal == Enum.NormalId.Bottom then
+      face = CELL_FACE_TYPE_SQUARE
+    end
+  elseif cellType == Enum.CellBlock.CornerWedge then
+    -- CornerWedge
+    if normal == Enum.NormalId.Left or normal == Enum.NormalId.Back or normal == Enum.NormalId.Top then
+      face = CELL_FACE_TYPE_EMPTY
+    elseif normal == Enum.NormalId.Right then
+      face = CELL_FACE_TYPE_TRIANGLE_BOTTOM_RIGHT
+    elseif normal == Enum.NormalId.Front then
+      face = CELL_FACE_TYPE_TRIANGLE_BOTTOM_LEFT
+    elseif normal == Enum.NormalId.Bottom then
+      face = CELL_FACE_TYPE_TRIANGLE_Y_AXIS
+    end
+  elseif cellType == Enum.CellBlock.InverseCornerWedge then
+    -- InverseCornerWedge
+    if normal == Enum.NormalId.Back then
+      face = CELL_FACE_TYPE_TRIANGLE_BOTTOM_RIGHT
+    elseif normal == Enum.NormalId.Left then
+      face = CELL_FACE_TYPE_TRIANGLE_BOTTOM_LEFT
+    elseif normal == Enum.NormalId.Top then
+      face = CELL_FACE_TYPE_TRIANGLE_Y_AXIS
+    elseif normal == Enum.NormalId.Right or normal == Enum.NormalId.Front or normal == Enum.NormalId.Bottom then
+      face = CELL_FACE_TYPE_SQUARE
+    end
+  elseif cellType == Enum.CellBlock.HorizontalWedge then
+    -- HorizontalWedge
+    if normal == Enum.NormalId.Left or normal == Enum.NormalId.Back then
+      face = CELL_FACE_TYPE_EMPTY
+    elseif normal == Enum.NormalId.Right or normal == Enum.NormalId.Front then
+      face = CELL_FACE_TYPE_SQUARE
+    elseif normal == Enum.NormalId.Top or normal == Enum.NormalId.Bottom then
+      face = CELL_FACE_TYPE_TRIANGLE_Y_AXIS
+    end
+  end
+
+  return face
+end
+
+local function CullFace(
+    ourCellType, ourCellOrientation, 
+    theirX, theirY, theirZ, 
+    ourNormal)
+  local ourFace = GetCellFace(ourCellType, ourCellOrientation, ourNormal)
+
+  if ourFace == CELL_FACE_TYPE_EMPTY then
+    -- Empty face, can't cull
+    return FACE_CULL_NO_FACE
+  end
+
+  local theirCellMat, theirCellType, theirCellOrientation = terrain:GetCell(theirX, theirY, theirZ) 
+
+  if theirCellMat == Enum.CellMaterial.Empty or theirCellMat == Enum.CellMaterial.Water then
+    -- Other cell is empty
+    return FACE_CULL_NONE 
+  end
+
+  local theirNormal = NORMAL_FLIP_MAP[ourNormal]
+  local theirFace = GetCellFace(theirCellType, theirCellOrientation, theirNormal)
+
+  if theirFace == CELL_FACE_TYPE_EMPTY then
+    -- Empty faces never cull our face
+    return FACE_CULL_NONE
+  end
+
+  if theirFace == CELL_FACE_TYPE_SQUARE then
+    -- Square faces always cull our face
+    return FACE_CULL_SQUARE
+  end
+
+  if ourFace == CELL_FACE_TYPE_SQUARE then
+    -- Only squares can cull our square face
+    return FACE_CULL_NONE
+  end
+
+  -- Only triangle faces from here on
+
+  -- For top/bottom, if the cell orientation matches then the faces line up
+  if ourNormal == Enum.NormalId.Top or ourNormal == Enum.NormalId.Bottom then
+    if ourCellOrientation == theirCellOrientation then
+      return FACE_CULL_TRIANGLE
+    else
+      return FACE_CULL_NONE
+    end
+  end
+
+  -- For left/right/back/front, if the faces are flipped versions of each other 
+  -- along the Y-axis, then the faces line up
+  if ourFace == CELL_FACE_Y_FLIP_MAP[theirFace] then
+    return FACE_CULL_TRIANGLE
+  else
+    return FACE_CULL_NONE
+  end
+end
+
+-- Whether a non-empty/non-water voxel exists at the coordinates with the given
+-- cell type and orientation
+local function IsVoxelAt(x, y, z, type, orientation)
+  local cellMat, cellType, cellOrientation = terrain:GetCell(x, y, z)
+  
+  if cellMat == Enum.CellMaterial.Empty or cellMat == Enum.CellMaterial.Water then
+    return false
+  end
+  
+  if type ~= nil and cellType ~= type then
+    return false
+  end
+  
+  if orientation ~= nil and cellOrientation ~= orientation then
+    return false
+  end
+  
+  return true	
+end
+
+local function BitPackSurround(isTop, top, bottom, left, right, front, back)
+  local n = 0
+
+  if isTop then n = n + 1 end
+  n = n * 2
+  if top ~= FACE_CULL_NONE then n = n + 1 end
+  n = n * 2
+  if bottom ~= FACE_CULL_NONE then n = n + 1 end
+  n = n * 2
+  if left ~= FACE_CULL_NONE then n = n + 1 end
+  n = n * 2
+  if right ~= FACE_CULL_NONE then n = n + 1 end
+  n = n * 2
+  if front ~= FACE_CULL_NONE then n = n + 1 end
+  n = n * 2
+  if back ~= FACE_CULL_NONE then n = n + 1 end
+
+  return n
+end
+
+-- Util to map enums to their indices
+local function MakeMap(enums)
+  local tbl = {}
+
+  for i, enum in ipairs(enums) do
+    tbl[enum] = i
+  end		
+  
+  return tbl
+end
+
+-- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- 
 -- MARK: Preparation
 local startTime = os.time()
 local terrainFolder = game:GetService("Selection"):Get()[1]
@@ -74,47 +309,7 @@ print("Found " .. tostring(#bounds) .. " KeepArea parts")
 
 -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- 
 -- MARK: Looping
-local terrain = workspace.Terrain
-
 local checkedVoxels = {}
-
--- Whether a non-empty/non-water voxel exists at the coordinates with the given
--- cell type and orientation
-local function IsVoxelAt(x, y, z, type, orientation)
-  local cellMat, cellType, cellOrientation = terrain:GetCell(x, y, z)
-  
-  if cellMat == Enum.CellMaterial.Empty or cellMat == Enum.CellMaterial.Water then
-    return false
-  end
-  
-  if cellType ~= type then
-    return false
-  end
-  
-  if orientation ~= nil and cellOrientation ~= orientation then
-    return false
-  end
-  
-  return true	
-end
-
-local function BitPackSurround(top, bottom, left, right, front, back)
-  local n = 0
-
-  if top then n = n + 1 end
-  n = n * 2
-  if bottom then n = n + 1 end
-  n = n * 2
-  if left then n = n + 1 end
-  n = n * 2
-  if right then n = n + 1 end
-  n = n * 2
-  if front then n = n + 1 end
-  n = n * 2
-  if back then n = n + 1 end
-
-  return n
-end
 
 -- Checks if a voxel was not already exported
 local function DeDupeVoxel(x, y, z)
@@ -136,17 +331,6 @@ local function DeDupeVoxel(x, y, z)
   else
     return false
   end
-end
-
--- Util to map enums to their indices
-local function MakeMap(enums)
-  local tbl = {}
-
-  for i, enum in ipairs(enums) do
-    tbl[enum] = i
-  end		
-  
-  return tbl
 end
 
 -- Set up maps to convert enums to numbers
@@ -181,44 +365,67 @@ for i, bound in ipairs(bounds) do
         
         -- Skip empty and already exported voxels
         if cellMat ~= Enum.CellMaterial.Empty and cellMat ~= Enum.CellMaterial.Water and DeDupeVoxel(x, y, z) then
-          -- Determine voxel side culling
-          local cull = false
-          local solidTop = false
-          local solidBottom = false
-          local solidLeft = false
-          local solidRight = false
-          local solidBack = false
-          local solidFront = false
+          -- Ignore orientation of solids
           if cellType == Enum.CellBlock.Solid then
-            solidTop = IsVoxelAt(x, y + 1, z, Enum.CellBlock.Solid)
-            solidBottom = IsVoxelAt(x, y - 1, z, Enum.CellBlock.Solid)
-            solidLeft = IsVoxelAt(x - 1, y, z, Enum.CellBlock.Solid)
-            solidRight = IsVoxelAt(x + 1, y, z, Enum.CellBlock.Solid)
-            solidBack = IsVoxelAt(x, y, z + 1, Enum.CellBlock.Solid)
-            solidFront = IsVoxelAt(x, y, z - 1, Enum.CellBlock.Solid)
-
-            cull = solidTop and solidBottom and solidLeft and solidRight and solidBack and solidFront
+            cellOrientation = Enum.CellOrientation.NegZ
           end
           
+          -- Determine voxel side culling
+          local cullLeft = CullFace(cellType, cellOrientation, x - 1, y, z, Enum.NormalId.Left)
+          local cullRight = CullFace(cellType, cellOrientation, x + 1, y, z, Enum.NormalId.Right)
+          local cullBottom = CullFace(cellType, cellOrientation, x, y - 1, z, Enum.NormalId.Bottom)
+          local cullTop = CullFace(cellType, cellOrientation, x, y + 1, z, Enum.NormalId.Top)
+          local cullBack = CullFace(cellType, cellOrientation, x, y, z + 1, Enum.NormalId.Back)
+          local cullFront = CullFace(cellType, cellOrientation, x, y, z - 1, Enum.NormalId.Front)
+
+          local cullVoxel = cullTop == FACE_CULL_SQUARE and 
+            cullBottom == FACE_CULL_SQUARE and 
+            cullLeft == FACE_CULL_SQUARE and 
+            cullRight == FACE_CULL_SQUARE and 
+            cullBack == FACE_CULL_SQUARE and 
+            cullFront == FACE_CULL_SQUARE
+          
           -- Skip if the whole voxel was determined to be culled
-          if not cull then
+          if not cullVoxel then
+            -- Determine if voxel is a top voxel
+            local isTop
+            if cellType == Enum.CellBlock.VerticalWedge then
+              -- VerticalWedge
+              if cellOrientation == Enum.CellOrientation.NegZ then
+                isTop = not IsVoxelAt(x, y + 1, z - 1)
+              elseif cellOrientation == Enum.CellOrientation.X then
+                isTop = not IsVoxelAt(x - 1, y + 1, z)
+              elseif cellOrientation == Enum.CellOrientation.Z then
+                isTop = not IsVoxelAt(x, y + 1, z + 1)
+              elseif cellOrientation == Enum.CellOrientation.NegX then
+                isTop = not IsVoxelAt(x + 1, y + 1, z)
+              end
+            elseif cellType == Enum.CellBlock.CornerWedge then
+              -- CornerWedge
+              if cellOrientation == Enum.CellOrientation.NegZ then
+                isTop = not IsVoxelAt(x + 1, y + 1, z - 1)
+              elseif cellOrientation == Enum.CellOrientation.X then
+                isTop = not IsVoxelAt(x - 1, y + 1, z - 1)
+              elseif cellOrientation == Enum.CellOrientation.Z then
+                isTop = not IsVoxelAt(x - 1, y + 1, z + 1)
+              elseif cellOrientation == Enum.CellOrientation.NegX then
+                isTop = not IsVoxelAt(x + 1, y + 1, z + 1)
+              end
+            else
+              -- Solid/InverseCornerWedge/HorizontalWedge
+              isTop = not IsVoxelAt(x, y + 1, z)
+            end
+
             -- Add voxel to script source
-            local surroundBits
-            if cellType == Enum.CellBlock.Solid then
-              surroundBits = BitPackSurround(solidTop, solidBottom, solidLeft, solidRight, solidFront, solidBack)
-            end 							
+            local surroundBits = BitPackSurround(isTop, cullTop, cullBottom, cullLeft, cullRight, cullFront, cullBack)					
             
             local str = "{" ..
               tostring(x) .. "," .. tostring(y) .. "," .. tostring(z) .. "," ..
               tostring(cellMats[cellMat]) .. "," .. 
               tostring(cellBlocks[cellType]) .. ","  ..
-              tostring(cellOrientations[cellOrientation])
-            
-            if surroundBits then 
-              str = str .. "," .. tostring(surroundBits)
-            end
-
-            str = str .. "}\n"
+              tostring(cellOrientations[cellOrientation]) .. ","  ..
+              tostring(surroundBits) ..
+              "}\n"
             
             if count > 0 then
               str = "," .. str
