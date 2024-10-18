@@ -700,7 +700,7 @@ local textures: { [number]: MaterialTextures } = {
     Side = "rbxassetid://11228988275",
     SideTop = "rbxassetid://11228987786",
     Slope = {
-      "rbxassetid://11228987380",
+      "rbxassetid://11228987198",
       "rbxassetid://77693233094499"
     },
     SlopeTop = {
