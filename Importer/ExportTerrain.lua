@@ -230,6 +230,44 @@ local function BitPackSurround(isTop, top, bottom, left, right, front, back)
   return n
 end
 
+local function DoBoundsOverlap(a, b)
+  -- if b's left or right is within a
+  -- and b's bottom or top is within a
+  -- and b's front or back is within a
+  -- then... they overlap
+  return ((b.left >= a.left and b.left <= a.right) or (b.right >= a.left and b.right <= a.right))
+    and ((b.bottom >= a.bottom and b.bottom <= a.top) or (b.top >= a.bottom and b.top <= a.top))
+    and ((b.back >= a.back and b.back <= a.front) or (b.front >= a.back and b.front <= a.front))
+end
+
+local function FindOverlappingBreakableBounds(bound, breakableBounds)
+  local breakable = {}
+  
+  for i, breakableBound in ipairs(breakableBounds) do
+    if DoBoundsOverlap(bound, breakableBound) then
+      table.insert(breakable, breakableBound)
+    end
+  end
+  
+  return breakable
+end
+
+local function IsVoxelInBound(x, y, z, bound)
+  return x >= bound.left and x < bound.right
+    and y >= bound.bottom and y < bound.top
+    and z >= bound.back and z < bound.front
+end
+
+local function FindFirstOverlappingBound(x, y, z, _bounds)
+  for i, bound in ipairs(_bounds) do
+    if IsVoxelInBound(x, y, z, bound) then
+      return bound
+    end
+  end
+  
+  return nil
+end
+
 -- Util to map enums to their indices
 local function MakeMap(enums)
   local tbl = {}
@@ -254,9 +292,10 @@ end
 print("Preparing...")
 
 local bounds = {}
+local breakableBounds = {}
 
 for i, part in ipairs(terrainFolder:GetChildren()) do
-  if part.Name == "KeepArea" then
+  if part.Name == "KeepArea" or part.Name == "BreakArea" then
     local xs = part.Size.X / 2
     local ys = part.Size.Y / 2
     local zs = part.Size.Z / 2
@@ -269,8 +308,18 @@ for i, part in ipairs(terrainFolder:GetChildren()) do
       bottom = math.floor((part.Position.Y - ys) / 4),
       top = math.floor((part.Position.Y + ys) / 4)
     }
-    
-    table.insert(bounds, bound)
+
+    if part.Name == "KeepArea" then
+      table.insert(bounds, bound)
+    else
+      local areaNameVal = part:FindFirstChild("AreaName")
+      if areaNameVal == nil then
+        error(part:GetFullName() .. " is missing a child AreaName StringValue!")
+      end
+      
+      bound.name = areaNameVal.Value
+      table.insert(breakableBounds, bound)
+    end
   end
 end
 
@@ -318,6 +367,8 @@ local scripts = {}
 local lines = {}
 table.insert(scripts, lines)
 
+local breakableScripts = {}
+
 local count = 0
 
 for i, bound in ipairs(bounds) do
@@ -325,6 +376,9 @@ for i, bound in ipairs(bounds) do
   if bound.right < bound.left then error("bound.right is bigger than left!") end
   if bound.top < bound.bottom then error("bound.top is bigger than bottom!") end
   if bound.front < bound.back then error("bound.front is bigger than back!") end
+
+  -- Get possible breakable bounds
+  local overlappingBreakableBounds = FindOverlappingBreakableBounds(bound, breakableBounds)
   
   -- Loop all voxels in bound
   for x = bound.left, bound.right do
@@ -338,6 +392,9 @@ for i, bound in ipairs(bounds) do
           if cellType == Enum.CellBlock.Solid then
             cellOrientation = Enum.CellOrientation.NegZ
           end
+
+          -- Check if voxel is in a breakable bound
+          local breakableBound = FindFirstOverlappingBound(x, y, z, overlappingBreakableBounds)
           
           -- Determine voxel side culling
           local cullLeft = CullFace(cellType, cellOrientation, x - 1, y, z, Enum.NormalId.Left)
@@ -347,7 +404,8 @@ for i, bound in ipairs(bounds) do
           local cullBack = CullFace(cellType, cellOrientation, x, y, z + 1, Enum.NormalId.Back)
           local cullFront = CullFace(cellType, cellOrientation, x, y, z - 1, Enum.NormalId.Front)
 
-          local cullVoxel = cullTop == FACE_CULL_SQUARE and 
+          local cullVoxel = breakableBound == nil and -- Never cull if within a breakable bound
+            cullTop == FACE_CULL_SQUARE and 
             cullBottom == FACE_CULL_SQUARE and 
             cullLeft == FACE_CULL_SQUARE and 
             cullRight == FACE_CULL_SQUARE and 
@@ -396,27 +454,41 @@ for i, bound in ipairs(bounds) do
               tostring(surroundBits) ..
               "}\n"
             
-            if count > 0 then
-              str = "," .. str
-            end
-            
-            table.insert(lines, str)
-            
-            count = count + 1
-            
-            -- Every 4000 voxels, start a new chunk
-            --
-            -- If the scripts get too big, studio starts having a hard time with them
-            if count >= 4000 then
-              print("Chunk " .. tostring(#scripts) .. "...")
+            if breakableBound == nil then
+              if count > 0 then
+                str = "," .. str
+              end
               
-              lines = {}
-              table.insert(scripts, lines)
-              count = 0
+              table.insert(lines, str)
               
-              wait()
+              count = count + 1
+              
+              -- Every 4000 voxels, start a new chunk
+              --
+              -- If the scripts get too big, studio starts having a hard time with them
+              if count >= 4000 then
+                print("Chunk " .. tostring(#scripts) .. "...")
+                
+                lines = {}
+                table.insert(scripts, lines)
+                count = 0
+                
+                wait()
+              end
+            else
+              local breakableLines = breakableScripts[breakableBound.name]
+              if breakableLines == nil then
+                breakableLines = {}
+                breakableScripts[breakableBound.name] = breakableLines
+              end
+              
+              if #breakableLines > 0 then
+                str = "," .. str
+              end
+              
+              table.insert(breakableLines, str)
             end
-            
+
           end
         end
       end
@@ -439,6 +511,13 @@ f.Name = "Voxels"
 for _, _lines in ipairs(scripts) do
   local s = Instance.new("ModuleScript")
   s.Name = "Chunk"
+  s.Source = "return {\n" .. table.concat(_lines) .. "\n}"
+  s.Parent = f
+end
+
+for name, _lines in pairs(breakableScripts) do
+  local s = Instance.new("ModuleScript")
+  s.Name = "Breakable_" .. name
   s.Source = "return {\n" .. table.concat(_lines) .. "\n}"
   s.Parent = f
 end
